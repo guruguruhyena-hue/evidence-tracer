@@ -346,13 +346,20 @@ function parseIzkyDepositDocument(pages,sourceName,pdfSha){
     const dm=dates[i],dateCompact=dm[0],segStart=dm.index;
     const segEnd=i+1<dates.length?dates[i+1].index:Math.min(compact.length,segStart+2200);
     const seg=compact.slice(segStart,segEnd);
-    if(!seg.includes('を入金しました')) continue;
-    const amt=seg.match(/([\d,]+(?:\.\d+)?)([A-Za-z0-9]+)(?:\([^)]*\))?を入金しました/);
+    // IMPORTANT: remove the date/time prefix before amount parsing.
+    // Without this, the minute digits (e.g. "14:20") can become part of
+    // the amount after whitespace is removed: 170.745602 -> 20170.745602.
+    const body=seg.slice(dateCompact.length);
+    // Browser print headers contain a capture timestamp followed by "履歴｜IZAKA-YA".
+    // They are document metadata, not transaction timestamps.
+    if(body.slice(0,180).includes('履歴｜IZAKA-YA')) continue;
+    if(!body.includes('を入金しました')) continue;
+    const amt=body.match(/([\d,]+(?:\.\d+)?)([A-Za-z0-9]+)(?:\([^)]*\))?を入金しました/);
     if(!amt) continue;
-    const wallet=(seg.match(/受信Walletアドレス:([^\[\]]+?)(?=受信宛先タグ:|TxID:|CryptoPanda|20\d{2}\/|$)/)||[])[1]||'';
-    const tag=(seg.match(/受信宛先タグ:([^\[\]]+?)(?=TxID:|20\d{2}\/|$)/)||[])[1]||'';
-    const txRaw=(seg.match(/TxID:([^\[\]]+?)(?=20\d{2}\/|$)/)||[])[1]||'';
-    const exchangeDirect=seg.includes('CryptoPandaで交換を行いました');
+    const wallet=(body.match(/受信Walletアドレス:([^\[\]]+?)(?=受信宛先タグ:|TxID:|CryptoPanda|20\d{2}\/|$)/)||[])[1]||'';
+    const tag=(body.match(/受信宛先タグ:([^\[\]]+?)(?=TxID:|20\d{2}\/|$)/)||[])[1]||'';
+    const txRaw=(body.match(/TxID:([^\[\]]+?)(?=20\d{2}\/|$)/)||[])[1]||'';
+    const exchangeDirect=body.includes('CryptoPandaで交換を行いました');
     const page=pageForPos(segStart);
     const dateRaw=dateCompact.slice(0,10)+' '+dateCompact.slice(10);
     const d=new Date(dateRaw.replace(/\//g,'-').replace(' ','T')+':00+09:00');
