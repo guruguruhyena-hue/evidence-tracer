@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Police Evidence Pack — Evidence Tracer</title><link rel="stylesheet" href="./src/style.css"><link rel="stylesheet" href="./src/report.css"></head>
+<body><main class="wrap">
+<nav class="report-nav no-print"><a href="./index.html">← Evidence Tracer / トレース画面に戻る</a></nav>
+<header class="hero no-print"><span class="badge">PRIVATE SESSION / LOCAL PROCESSING</span><h1>Police Evidence Pack</h1><p>警察提出用の資料整理・証拠目録（一般利用版）</p></header>
+<section class="card no-print">
+<h2>01 · ケース情報</h2>
+<p class="muted">事件名や説明は利用者が入力したときだけ表示されます。公開ページには事前登録された事件情報・個人アドレス・金額はありません。<strong>このページは保存機能を使わず、閉じると入力内容が消えます。</strong></p>
+<div class="grid"><div><label for="caseTitle">事件名（任意）</label><input id="caseTitle" placeholder="例：暗号資産の出金未履行"></div><div><label for="reporter">提出者（任意）</label><input id="reporter" autocomplete="off" placeholder="本人の氏名など"></div></div>
+<label for="caseStatement">経緯・事実関係（本人申告）</label><textarea id="caseStatement" rows="6" placeholder="いつ、どのサービスで、何が起きたか。確認できた資料と未確認事項を分けて記載してください。"></textarea>
+</section>
+<section class="card no-print">
+<h2>02 · 出金申請・未着金の記録</h2>
+<p class="muted">原本PDFの内容を確認して1件ずつ入力します。未送金・未着金を自動的に断定する機能ではありません。</p>
+<form id="withdrawalForm">
+<div class="grid">
+<div><label for="wDate">日時（記録どおり）</label><input id="wDate" placeholder="2026/08/30 07:30" required></div>
+<div><label for="wAsset">資産</label><input id="wAsset" placeholder="BTC" required></div>
+<div><label for="wAmount">申請数量（文字列のまま保存）</label><input id="wAmount" placeholder="0.01234567" inputmode="decimal" required></div>
+<div><label for="wStatus">原本に記載された状態</label><input id="wStatus" placeholder="送金待" required></div>
+<div class="full"><label for="wAddress">受信アドレス（任意）</label><input id="wAddress" autocomplete="off" spellcheck="false"></div>
+<div class="full"><label for="wNote">出典・補足（任意）</label><input id="wNote" placeholder="送金履歴PDF p.1 など"></div>
+</div><div class="actions"><button type="submit" class="primary">出金申請を追加</button><button id="clearWithdrawals" type="button">出金記録をクリア</button></div></form>
+<div class="results"><table><thead><tr><th>日時</th><th>資産</th><th>申請数量</th><th>原本状態</th><th>アドレス</th><th>出典・補足</th><th>削除</th></tr></thead><tbody id="wRows"></tbody></table></div>
+</section>
+<section class="card no-print"><h2>03 · 証拠原本のSHA-256</h2>
+<p class="muted">ファイルを選択するとブラウザ内でSHA-256を計算します。<strong>原本ファイル自体はアップロードされません。</strong> ハッシュは選択したファイルを識別しますが、原本の真正性を単独で証明するものではありません。</p>
+<input id="evidenceFiles" type="file" multiple accept=".pdf,.json,.csv,.txt,.eml,.png,.jpg,.jpeg,.webp">
+<p id="fileStatus" class="muted" role="status">ファイルはまだ選択されていません。</p>
+<div class="results"><table><thead><tr><th>No.</th><th>ファイル</th><th>サイズ</th><th>SHA-256</th><th>削除</th></tr></thead><tbody id="fileRows"></tbody></table></div>
+</section>
+<section class="card no-print"><h2>04 · Evidence Tracerの照合結果（任意）</h2>
+<p class="muted">前ページで保存した「Export reconciliation JSON」を読み込むと、照合状態の件数をレポートに記載できます。内容の真正性は再検証されず、<strong>派生資料・未再検証</strong>として扱います。</p>
+<input id="reconFile" type="file" accept=".json,application/json"><p id="reconStatus" class="muted" role="status">照合JSONは読み込まれていません。</p>
+</section>
+<section class="card no-print"><h2>05 · レポート作成</h2>
+<p class="muted">入力内容と出典を確認してプレビューしてください。PDFはブラウザの「印刷 → PDFに保存」で作成します。JSONには出金記録・ファイルハッシュ・照合の要約を含めます。原本ファイル自体は含まれません。</p>
+<div class="actions"><button id="makeReport" class="primary">レポートを作成</button><button id="printReport">印刷 / PDF保存</button><button id="exportPacket">提出用JSONを保存</button></div>
+<p id="reportStatus" role="status" class="muted"></p>
+</section>
+<section class="card report-preview" id="reportPreview"><h2>提出用レポートのプレビュー</h2><p>入力後、「レポートを作成」を選んでください。</p></section>
+<footer class="card no-print"><b>Evidence Tracer · Local Report Builder</b><p class="muted">事実・本人申告・未検証情報を区別して記載します。警察の鑑定や捜査結果の代替ではありません。</p></footer>
+</main><script src="./report.js" defer></script></body></html>
