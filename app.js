@@ -68,16 +68,9 @@ function renderTraceCacheStatus(){
   el.textContent='Saved trace cache: '+c.wallets.length+' wallet(s) / '+c.evidence.length+' evidence record(s). API keys and private keys are never stored.';
 }
 
-const knownProfile={
- caseProfile:'IZAKA-YA',version:'2026-11-22.1',
- addresses:[
- {id:'ADR-ETH-0001',chain:'evm',address:'0x373A411724F5d1D76e873075204EEb15dCFD40C8',classification:'IZAKAYA_DEPOSIT',evidenceLevel:'USER_PRIMARY_EVIDENCE',evidenceRefs:['本人入金履歴']},
- {id:'ADR-SOL-0001',chain:'sol',address:'AxrPw9xsCwmZkhJ9xgBQCFyEJEgmVLcRJ48i6shMr8Az',classification:'IZAKAYA_DEPOSIT',evidenceLevel:'USER_PRIMARY_EVIDENCE',evidenceRefs:['本人入金履歴']},
- {id:'ADR-BTC-0001',chain:'btc',address:'bc1qayqcwz6fy3dhtasdzqhnfpl6z32pggggakuzn6',classification:'IZAKAYA_DEPOSIT',evidenceLevel:'USER_PRIMARY_EVIDENCE',evidenceRefs:['本人入金履歴']},
- {id:'ADR-XRP-0001',chain:'xrp',address:'r3ukRCmW7W5wUTJH2od53By4FmX8FLm7Q5',classification:'IZAKAYA_DEPOSIT',evidenceLevel:'USER_PRIMARY_EVIDENCE',evidenceRefs:['本人入金履歴']},
- {id:'REL-EVM-0001',chain:'evm',address:'0x533c62c39fa1464cd7919d20175663b3e3a8f214',classification:'RELATED_WALLET',evidenceLevel:'RELATED',evidenceRefs:['OC001','PF011']},
- {id:'REL-EVM-0002',chain:'evm',address:'0x4c12e0027ecece9ca8b4e673200e927aa523402d',classification:'RELATED_WALLET',evidenceLevel:'RELATED',evidenceRefs:['OC002','OC003','OC004','OC005','OC007']}
- ]};
+// Public builds must not contain case-specific addresses or evidence.
+// Targets must be supplied by each investigator in their own local session.
+const knownProfile={caseProfile:'USER_DEFINED',version:'public-1',addresses:[]};
 const $=id=>document.getElementById(id);
 function units(value,decimals){let s=String(value||'0').replace(/^0+/,'')||'0';const d=Number(decimals||0);if(d===0)return s;if(s.length<=d)s=s.padStart(d+1,'0');const a=s.slice(0,-d),b=s.slice(-d).replace(/0+$/,'');return b?(`${a}.${b}`):a;}
 function norm(chain,a){return chain==='evm'?String(a).toLowerCase():String(a);}
@@ -151,7 +144,7 @@ async function resolveBaseTxSource(row){
   if(!receipt)throw new Error('Base receipt not found.');
   if(receipt.status!=='0x1')throw new Error('Base transaction receipt is not successful.');
 
-  // Native ETH transfer directly to the IZAKA-YA deposit address.
+  // Native ETH transfer directly to the the imported service deposit address.
   if(String(tx.to||'').toLowerCase()===expectedTo && BigInt(tx.value||'0x0')>0n && String(row.asset||'').toUpperCase()==='ETH' && amountClose(hexToDecimalString(tx.value,18),row.amount)){
     return {
       network:'Base',sourceAddress:String(tx.from||'').toLowerCase(),
@@ -196,7 +189,7 @@ async function resolveBaseTxSource(row){
       status:receipt.status,resolvedAt:new Date().toISOString(),rpcUrl:BASE_MAINNET_RPC
     };
   }
-  throw new Error('Transaction exists on Base, but no transfer to the imported IZAKA-YA destination was found.');
+  throw new Error('Transaction exists on Base, but no transfer to the imported the imported service destination was found.');
 }
 async function resolveUnknownBaseSources(){
   if(!reconciliationResults.length)throw new Error('Run reconciliation first.');
@@ -228,7 +221,7 @@ async function resolveUnknownBaseSources(){
         self++;
       }else{
         r.status='ONCHAIN_SOURCE_RESOLVED';
-        r.reason='PDF TxID was found on Base and a transfer to the IZAKA-YA destination was verified. Source address identified; legal ownership/exchange attribution is not established.';
+        r.reason='PDF TxID was found on Base and a transfer to the the imported service destination was verified. Source address identified; legal ownership/exchange attribution is not established.';
       }
       resolved++;
     }catch(e){
@@ -571,9 +564,9 @@ function parseIzkyDepositDocument(pages,sourceName,pdfSha){
     // Without this, the minute digits (e.g. "14:20") can become part of
     // the amount after whitespace is removed: 170.745602 -> 20170.745602.
     const body=seg.slice(dateCompact.length);
-    // Browser print headers contain a capture timestamp followed by "履歴｜IZAKA-YA".
+    // Browser print headers contain a capture timestamp followed by "履歴｜the imported service".
     // They are document metadata, not transaction timestamps.
-    if(body.slice(0,180).includes('履歴｜IZAKA-YA')) continue;
+    if(body.slice(0,180).includes('履歴｜the imported service')) continue;
     if(!body.includes('を入金しました')) continue;
     const amt=body.match(/([\d,]+(?:\.\d+)?)([A-Za-z0-9]+)(?:\([^)]*\))?を入金しました/);
     if(!amt) continue;
@@ -852,7 +845,7 @@ function init(){ restoreTraceCache(); $('network').innerHTML=EVM_CHAINS.map(c=>`
  if(ledgerFile) ledgerFile.addEventListener('change',async()=>{
    try{
      const file=ledgerFile.files&&ledgerFile.files[0];
-     if(!file){importedLedger=[];$('reconStatus').textContent='No IZAKA-YA records loaded.';return;}
+     if(!file){importedLedger=[];$('reconStatus').textContent='No the imported service records loaded.';return;}
      $('reconStatus').textContent='Reading '+file.name+' locally…';
      importedLedger=await parseLedgerFile(file);
      $('reconStatus').textContent='Extracted records: '+importedLedger.length+
