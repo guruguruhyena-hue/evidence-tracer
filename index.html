@@ -7,9 +7,15 @@
 <p><strong>APIキー・秘密鍵・シードフレーズは保存しません。</strong></p>
 </div></section>
 <section class="card no-print"><h2>01 · Wallet Trace / ウォレット照合</h2>
-<p class="section-intro">まず公開ウォレットを選び、IZAKA-YA宛ての送金履歴を照会します。<span class="sentence-break">一度照会した結果は下の「Saved Trace Cache」で再利用できます。</span></p>
+<p class="section-intro">まず公開ウォレットを選び、指定した送金先への送金履歴を照会します。<span class="sentence-break">一度照会した結果は下の「Saved Trace Cache」で再利用できます。</span></p>
+<div class="workflow"><strong>非公開の照合先アドレス（ブラウザ内のみ）</strong>
+<p>送り先アドレスをチェーン名とともに入力すると、そのアドレス宛ての送金だけを照合します。<span class="sentence-break">共有の初期設定には、他の利用者の事件情報は含まれていません。</span></p>
+<label for="localTargets">1行につき「btc:アドレス」「evm:アドレス」「sol:アドレス」「xrp:アドレス」</label>
+<textarea id="localTargets" rows="3" spellcheck="false" placeholder="btc:bc1...&#10;evm:0x...&#10;sol:..."></textarea>
+<div class="actions"><button id="saveLocalTargets">照合先をローカルに保存</button><button id="clearLocalTargets">照合先を消去</button></div>
+<p id="localTargetsStatus" class="muted">登録された照合先はありません。</p></div>
 <div class="grid"><div><label>Chain</label><select id="kind"><option value="btc">Bitcoin</option><option value="evm">EVM (ETH/BNB/L2)</option><option value="sol">Solana</option><option value="xrp">XRP Ledger</option></select></div><div id="networkWrap"><label>Network</label><select id="network"><option value="1">Ethereum</option><option value="56">BNB Smart Chain</option><option value="137">Polygon</option><option value="42161">Arbitrum One</option><option value="10">OP Mainnet</option><option value="8453">Base</option><option value="43114">Avalanche C-Chain</option><option value="59144">Linea</option><option value="534352">Scroll</option><option value="324">zkSync Era</option><option value="999">HyperEVM</option><option value="204">opBNB</option></select><p class="muted">EVM選択時のみ使用します。<span class="sentence-break">BaseのPDF TxID逆引きにはEtherscan APIではなくBase公式RPCを使用します。</span></p></div><div><label>Your public address</label><input id="addr" autocomplete="off" spellcheck="false"></div><div id="keyWrap"><label><a class="help-link" href="https://etherscan.io/myapikey" target="_blank" rel="noopener noreferrer" aria-describedby="etherscanTip">Etherscan API key (memory only)</a><span class="help-icon" tabindex="0" aria-describedby="etherscanTip">?</span></label><div id="etherscanTip" class="tooltip" role="tooltip">EtherscanのAPI Keysページを開きます。<span class="sentence-break">APIキーはこのブラウザのメモリ上で検索時のみ使用します。</span><span class="sentence-break">照会リクエストはEtherscanへ送信されます。</span></div><input id="key" type="password" autocomplete="off" placeholder="Click the label above to get an API key"></div><div id="rpcWrap"><label>Custom RPC URL (optional)</label><input id="rpc" autocomplete="off" placeholder="Solana RPC URL"><p class="muted">Solana公開RPCで403 / 429が出る場合は、Helius / QuickNode等の専用RPC URLを入力してください。<span class="sentence-break">秘密鍵は不要です。</span></p></div><div><label>Maximum records</label><input id="max" type="number" min="1" max="1000" value="200"></div></div><div style="margin-top:12px"><button class="primary" id="scan">Scan & Match IZAKA-YA addresses</button></div><p id="status" class="muted">Application loaded.</p></section>
-<section class="card"><h2>02 · Trace Results / 送金照合結果</h2><div id="reportMeta" class="report-meta"></div><div class="actions no-print"><button id="json">Export JSON</button><button id="print">Print / Save PDF</button><button id="clear">Clear memory</button></div><h2>Matched transfers</h2><div id="summary" class="muted">No scan yet.</div><div class="results"><table><thead><tr><th>Date</th><th>Network</th><th>Asset</th><th>Amount</th><th>To</th><th>TxID</th><th>Classification</th><th>Evidence</th></tr></thead><tbody id="rows"></tbody></table></div><div id="evidenceDetails" class="evidence-details"></div></section>
+<section class="card"><h2>02 · Trace Results / 送金照合結果</h2><div id="reportMeta" class="report-meta"></div><div class="actions no-print"><button id="json">Export JSON</button><button id="print">Print / Save PDF</button><button id="clear">Clear memory</button></div><h2>Matched transfers / 一致した送金</h2><div id="summary" class="muted">No scan yet.</div><div class="results"><table><thead><tr><th>Date</th><th>Network</th><th>Asset</th><th>Amount</th><th>To</th><th>TxID</th><th>Classification</th><th>Evidence</th></tr></thead><tbody id="rows"></tbody></table></div><div id="evidenceDetails" class="evidence-details"></div></section>
 
 <section class="card no-print">
   <h2>03 · Saved Trace Cache / Trace結果の保存</h2>
@@ -31,12 +37,12 @@
 
 <section class="card no-print">
   <h2>04 · Deposit Reconciliation / 入金照合</h2>
-  <div class="explain"><p>IZAKA-YAの入金記録（PDF / CSV / JSON）を読み込みます。</p>
+  <div class="explain"><p>入金記録（PDF / CSV / JSON）を読み込みます。</p>
 <p>保存済みTraceや現在のセッションの送金記録と照合します。</p>
 <p>ファイル内容はEvidence Tracerのサーバーにアップロードされません。</p></div>
 <div class="workflow"><strong>操作順序</strong><div class="workflow-steps"><span>① PDFを選択</span><span>② Reconcile</span><span>③ SOL / Base TxID照会（任意）</span><span>④ JSON出力</span></div></div>
   <div class="grid">
-    <div><label>IZAKA-YA record file (PDF / CSV / JSON)</label><input id="ledgerFile" type="file" accept=".pdf,.csv,.json,application/pdf,text/csv,application/json"></div>
+    <div><label>Deposit record file (PDF / CSV / JSON)</label><input id="ledgerFile" type="file" accept=".pdf,.csv,.json,application/pdf,text/csv,application/json"></div>
     <div><label>Time tolerance (minutes)</label><input id="timeTolerance" type="number" min="0" max="1440" value="180"></div>
   </div>
   <div class="explain explain-secondary"><p><strong>PDF：</strong>履歴からページ番号・抽出原文・PDF SHA-256を保持します。</p>
@@ -66,5 +72,5 @@
   <div class="explain explain-secondary"><p>※ BTC・ETH・SOL・XRP・USDCなど、異なる資産をひとつの金額には合算していません。</p><p>「Total」は各資産単位の合計です。</p><p>内部交換額は外部からの新規入金として二重計上しません。</p></div>
 </section>
 
-<section class="card"><b>Evidence Tracer v0.8.1</b><p class="muted">Static single-file runtime. Server-side storage: NONE · Analytics: NONE · Wallet connection: NONE.</p></section></div>
+<section class="card"><b>Evidence Tracer v0.8.2</b><p class="muted">Static single-file runtime. Server-side storage: NONE · Analytics: NONE · Wallet connection: NONE.</p></section></div>
 <script src="./app.js" defer></script></body></html>
