@@ -800,11 +800,37 @@ function renderDepositSummary(){
 }
 function renderReconciliation(){
   const rows=$('reconRows'); if(!rows)return;rows.innerHTML='';
-  for(const r of reconciliationResults){const tr=document.createElement('tr');tr.innerHTML=
-    '<td>'+esc(r.recordId)+'</td><td>'+esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):r.dateRaw||'—')+'</td><td>'+esc(r.asset)+'</td><td>'+esc(r.amount)+'</td><td><span class="pill">'+esc(r.status)+'</span></td><td>'+esc(r.reason)+(r.matchedEvidenceId?'<br><code>'+esc(r.matchedEvidenceId)+'</code>':'')+(r.onchainSourceAddress?'<br>From: <code>'+esc(r.onchainSourceAddress)+'</code>':'')+(r.onchainNetwork?'<br>Network: '+esc(r.onchainNetwork):'')+(r.onchainTxSender&&r.onchainTxSender!==r.onchainSourceAddress?'<br>Tx sender: <code>'+esc(r.onchainTxSender)+'</code>':'')+(r.onchainTokenContract?'<br>Token contract: <code>'+esc(r.onchainTokenContract)+'</code>':'')+(r.onchainResolvedAmount?'<br>On-chain amount: '+esc(r.onchainResolvedAmount):'')+(r.sourceResolutionMethod?'<br>Method: '+esc(r.sourceResolutionMethod):'')+(r.baseResolutionError?'<br>Base resolve error: '+esc(r.baseResolutionError):'')+(r.sourceResolutionError?'<br>Resolve error: '+esc(r.sourceResolutionError):'')+'</td>';rows.appendChild(tr);}
+  const details=[
+    ['matchedEvidenceId','Evidence ID'],['onchainSourceAddress','From'],
+    ['onchainNetwork','Network'],['onchainTxSender','Tx sender'],
+    ['onchainTokenContract','Token contract'],['onchainResolvedAmount','On-chain amount'],
+    ['sourceResolutionMethod','Method']
+  ];
+  for(const r of reconciliationResults){
+    const tr=document.createElement('tr');
+    const facts=details.filter(([key])=>r[key]!==undefined&&r[key]!==null&&r[key]!==''&&
+      !(key==='onchainTxSender'&&r.onchainTxSender===r.onchainSourceAddress))
+      .map(([key,label])=>'<div class="recon-fact"><strong>'+esc(label)+':</strong> <code>'+esc(r[key])+'</code></div>').join('');
+    const errors=[r.baseResolutionError,r.sourceResolutionError].filter(Boolean)
+      .map(e=>'<div class="recon-error">'+esc(e)+'</div>').join('');
+    tr.innerHTML='<td>'+esc(r.recordId)+'</td>'+
+      '<td>'+esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):r.dateRaw||'—')+'</td>'+
+      '<td>'+esc(r.asset)+'</td><td>'+esc(r.amount)+'</td>'+
+      '<td><span class="pill" data-status="'+esc(r.status)+'">'+esc(r.status)+'</span></td>'+
+      '<td><div class="recon-reason">'+esc(r.reason||'')+'</div>'+facts+errors+'</td>';
+    rows.appendChild(tr);
+  }
   const counts={};for(const r of reconciliationResults)counts[r.status]=(counts[r.status]||0)+1;
-  $('reconSummary').textContent=reconciliationResults.length+' record(s): '+Object.entries(counts).map(([k,v])=>k+' '+v).join(' / ');
-  $('reconDetails').innerHTML=reconciliationResults.length?'<h2>Reconciliation methodology</h2><p class="muted">SELF_WALLET_CONFIRMED = TxID exact match, or unique asset/amount/time match against evidence scanned in this browser session. SOURCE_UNKNOWN = no self-wallet match found; exchange/direct-service origin remains an investigative hypothesis until supported by exchange withdrawal records or other primary evidence.</p>':'';
+  $('reconSummary').textContent=reconciliationResults.length+' record(s)\n'+Object.entries(counts).map(([k,v])=>k+': '+v).join('  /  ');
+  $('reconSummary').style.whiteSpace='pre-line';
+  $('reconDetails').innerHTML=reconciliationResults.length?
+    '<h2>Reconciliation methodology / 照合方法</h2>'+
+    '<div class="explain">'+
+    '<p><strong>SELF_WALLET_CONFIRMED：</strong>保存済みまたは今回のTrace証拠と、TxID・宛先・金額などが一致したもの。</p>'+
+    '<p><strong>SOURCE_UNKNOWN：</strong>確認できた本人ウォレットの送金に一致しないもの。交換サービス経由や第三者送金と断定するものではありません。</p>'+
+    '<p><strong>UNRESOLVED：</strong>取引情報の不一致やPDF情報の不足など、追加確認が必要なもの。</p>'+
+    '<p><strong>ONCHAIN_SOURCE_RESOLVED：</strong>ブロックチェーン上の送金元を取得したもの。ただし法的な所有者は未確認です。</p>'+
+    '</div>':'';
   renderDepositSummary();
 }
 
