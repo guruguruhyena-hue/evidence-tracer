@@ -7,7 +7,8 @@
     "privacy:test": "node scripts/privacy-check.mjs",
     "build:vendor": "node scripts/build-vendor.mjs",
     "serve": "python3 -m http.server 8080",
-    "syntax:test": "node --check app.js"
+    "syntax:test": "node --check app.js",
+    "reconciliation:test": "node scripts/reconciliation-test.mjs"
   },
   "dependencies": {
     "pdfjs-dist": "6.5.438"
