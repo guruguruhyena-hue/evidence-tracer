@@ -24,8 +24,39 @@ function matchTransfers(records){return records.flatMap(r=>{const hit=knownProfi
 async function scanBitcoin(req){const API='https://blockstream.info/api';const res=await fetch(`${API}/address/${encodeURIComponent(req.address)}/txs`,{cache:'no-store'});if(!res.ok)throw new Error('Bitcoin API error '+res.status);const all=await res.json(),out=[];for(const tx of all.slice(0,req.maxRecords||200)){if(!(tx.vin||[]).some(v=>v.prevout&&v.prevout.scriptpubkey_address===req.address))continue;for(const vout of tx.vout||[]){const to=vout.scriptpubkey_address;if(!to||to===req.address)continue;out.push({chain:'btc',network:'Bitcoin',txid:tx.txid,timestamp:tx.status&&tx.status.block_time||null,from:req.address,to,asset:'BTC',amount:units(vout.value,8),status:tx.status&&tx.status.confirmed?'confirmed':'pending',raw:tx});}}return out;}
 async function evmQuery(params){const u=new URL('https://api.etherscan.io/v2/api');Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));const r=await fetch(u);if(!r.ok)throw new Error('Etherscan HTTP '+r.status);const j=await r.json();if(j.status==='0'&&!String(j.message||'').toLowerCase().includes('no transactions'))throw new Error(String(j.result||j.message||'Etherscan API error'));return Array.isArray(j.result)?j.result:[];}
 async function scanEvm(req){if(!req.apiKey)throw new Error('Etherscan API keyが必要です。ブラウザメモリにのみ保持されます。');const c=EVM_CHAINS.find(x=>x.chainId===req.network);const base={chainid:c.chainId,module:'account',address:req.address,startblock:'0',endblock:'999999999',page:'1',offset:String(req.maxRecords||200),sort:'asc',apikey:req.apiKey};const [normal,token]=await Promise.all([evmQuery({...base,action:'txlist'}),evmQuery({...base,action:'tokentx'})]);const a=req.address.toLowerCase(),out=[];for(const t of normal){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:c.symbol,amount:units(t.value,18),status:t.isError==='0'?'confirmed':'unknown',raw:t});}for(const t of token){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:t.tokenSymbol||'TOKEN',amount:units(t.value,t.tokenDecimal),status:'confirmed',raw:t});}return out;}
-async function rpc(url,method,params){const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok)throw new Error('RPC HTTP '+r.status);const j=await r.json();if(j.error)throw new Error(j.error.message);return j.result;}
-async function scanSolana(req){const url=req.rpcUrl||'https://api.mainnet-beta.solana.com';const sigs=await rpc(url,'getSignaturesForAddress',[req.address,{limit:Math.min(req.maxRecords||100,1000),commitment:'finalized'}]);const out=[];for(const s of sigs){const tx=await rpc(url,'getTransaction',[s.signature,{encoding:'jsonParsed',commitment:'finalized',maxSupportedTransactionVersion:0}]);if(!tx)continue;for(const i of tx.transaction?.message?.instructions||[]){const p=i.parsed;if(p&&p.type==='transfer'&&p.info?.source===req.address&&p.info?.destination&&p.info?.lamports!=null)out.push({chain:'sol',network:'Solana',txid:s.signature,timestamp:tx.blockTime,from:req.address,to:p.info.destination,asset:'SOL',amount:units(p.info.lamports,9),status:'finalized',raw:tx});}}return out;}
+async function rpc(url,method,params){const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok){
+  let detail='';
+  try{detail=' '+await r.text();}catch{}
+  throw new Error('RPC HTTP '+r.status+detail.slice(0,180));
+}const j=await r.json();if(j.error)throw new Error(j.error.message);return j.result;}
+async function scanSolana(req){
+  const endpoints=req.rpcUrl?[req.rpcUrl]:[
+    'https://api.mainnet.solana.com',
+    'https://rpc.ankr.com/solana'
+  ];
+  let lastErr=null;
+  for(const url of endpoints){
+    try{
+      const sigs=await rpc(url,'getSignaturesForAddress',[req.address,{limit:Math.min(req.maxRecords||100,1000),commitment:'finalized'}]);
+      const out=[];
+      for(const sig of sigs){
+        const tx=await rpc(url,'getTransaction',[sig.signature,{encoding:'jsonParsed',commitment:'finalized',maxSupportedTransactionVersion:0}]);
+        if(!tx)continue;
+        for(const i of tx.transaction?.message?.instructions||[]){
+          const p=i.parsed;
+          if(p&&p.type==='transfer'&&p.info?.source===req.address&&p.info?.destination&&p.info?.lamports!=null){
+            out.push({chain:'sol',network:'Solana',txid:sig.signature,timestamp:tx.blockTime,block:tx.slot,from:req.address,to:p.info.destination,asset:'SOL',amount:units(p.info.lamports,9),status:'finalized',source:'Solana JSON-RPC '+url,raw:tx});
+          }
+        }
+      }
+      return out;
+    }catch(e){
+      lastErr=e;
+      if(req.rpcUrl) break;
+    }
+  }
+  throw new Error((lastErr?.message||'Solana RPC failed')+' — Public RPC access may be blocked or rate-limited. Try a Custom RPC URL.');
+}
 async function scanXrp(req){const url=req.rpcUrl||'https://xrplcluster.com/';const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'account_tx',params:[{account:req.address,ledger_index_min:-1,ledger_index_max:-1,binary:false,limit:req.maxRecords||200,forward:false}]})});if(!r.ok)throw new Error('XRPL HTTP '+r.status);const j=await r.json(),out=[];for(const e of j.result?.transactions||[]){const t=e.tx_json||e.tx||e;if(t.TransactionType!=='Payment'||t.Account!==req.address||!t.Destination)continue;out.push({chain:'xrp',network:'XRP Ledger',txid:t.hash||e.hash||'',timestamp:typeof t.date==='number'?t.date+946684800:null,from:t.Account,to:t.Destination,asset:typeof t.Amount==='string'?'XRP':(t.Amount?.currency||'ISSUED'),amount:typeof t.Amount==='string'?units(t.Amount,6):String(t.Amount?.value||''),status:'validated',raw:e});}return out;}
 async function sha256(text){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');}
 function download(name,data,type='text/plain'){const b=typeof data==='string'?new Blob([data],{type}):data;const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
