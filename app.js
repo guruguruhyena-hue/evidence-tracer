@@ -144,8 +144,18 @@ async function resolveBaseTxSource(row){
     if(!amountClose(amount,row.amount))continue;
     const symbolHex=await rpc(BASE_MAINNET_RPC,'eth_call',[{to:log.address,data:'0x95d89b41'},'latest']).catch(()=>null);
     let tokenSymbol='';
-    if(symbolHex){try{const bytes=String(symbolHex).slice(2);const n=Number.parseInt(bytes.slice(64,128),16);const off=Number.parseInt(bytes.slice(0,64),16)*2;tokenSymbol=decodeURIComponent(bytes.slice(off+64,off+64+n*2).replace(/../g,'%const amount=decimals==null?BigInt(log.data||'0x0').toString():hexToDecimalString(log.data,decimals);
-    return {')).replace(/\0/g,'');}catch{}}
+    if(symbolHex){
+      try{
+        const bytes=String(symbolHex).slice(2);
+        const offset=Number.parseInt(bytes.slice(0,64),16)*2;
+        const length=Number.parseInt(bytes.slice(offset,offset+64),16);
+        if(Number.isFinite(offset)&&Number.isFinite(length)&&length>=0&&length<256){
+          const hex=bytes.slice(offset+64,offset+64+length*2);
+          const chars=hex.match(/.{2}/g)||[];
+          tokenSymbol=new TextDecoder().decode(Uint8Array.from(chars.map(x=>parseInt(x,16)))).replace(/\0/g,'');
+        }
+      }catch{}
+    }
     if(tokenSymbol&&tokenSymbol.toUpperCase()!==String(row.asset||'').toUpperCase())continue;
     return {
       network:'Base',sourceAddress:from,txSender:String(tx.from||'').toLowerCase(),
