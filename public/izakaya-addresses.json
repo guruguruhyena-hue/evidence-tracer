@@ -1,0 +1,13 @@
+{
+  "caseProfile": "IZAKA-YA",
+  "version": "2026-11-22.1",
+  "notice": "Address attribution is evidence-scoped. RELATED_WALLET does not mean customer deposit address, legal ownership, or criminal involvement.",
+  "addresses": [
+    {"id":"ADR-ETH-0001","chain":"evm","address":"0x373A411724F5d1D76e873075204EEb15dCFD40C8","label":"IZAKA-YA observed deposit address (Ethereum/ERC-20)","classification":"IZAKAYA_DEPOSIT","evidenceLevel":"USER_PRIMARY_EVIDENCE","evidenceRefs":["本人入金履歴"],"notes":"User primary evidence; do not infer legal ownership beyond the evidence."},
+    {"id":"ADR-SOL-0001","chain":"sol","address":"AxrPw9xsCwmZkhJ9xgBQCFyEJEgmVLcRJ48i6shMr8Az","label":"IZAKA-YA observed deposit address (Solana)","classification":"IZAKAYA_DEPOSIT","evidenceLevel":"USER_PRIMARY_EVIDENCE","evidenceRefs":["本人入金履歴"]},
+    {"id":"ADR-BTC-0001","chain":"btc","address":"bc1qayqcwz6fy3dhtasdzqhnfpl6z32pggggakuzn6","label":"IZAKA-YA observed deposit address (Bitcoin)","classification":"IZAKAYA_DEPOSIT","evidenceLevel":"USER_PRIMARY_EVIDENCE","evidenceRefs":["本人入金履歴"]},
+    {"id":"ADR-XRP-0001","chain":"xrp","address":"r3ukRCmW7W5wUTJH2od53By4FmX8FLm7Q5","label":"IZAKA-YA observed deposit address (XRPL)","classification":"IZAKAYA_DEPOSIT","evidenceLevel":"USER_PRIMARY_EVIDENCE","evidenceRefs":["本人入金履歴"]},
+    {"id":"REL-EVM-0001","chain":"evm","address":"0x533c62c39fa1464cd7919d20175663b3e3a8f214","label":"IZKY creator/owner-context wallet","classification":"RELATED_WALLET","evidenceLevel":"RELATED","evidenceRefs":["OC001","PF011"],"notes":"Related wallet only; not classified as a customer deposit address."},
+    {"id":"REL-EVM-0002","chain":"evm","address":"0x4c12e0027ecece9ca8b4e673200e927aa523402d","label":"Observed intermediary wallet","classification":"RELATED_WALLET","evidenceLevel":"RELATED","evidenceRefs":["OC002","OC003","OC004","OC005","OC007"],"notes":"Related wallet only; legal owner and purpose unconfirmed."}
+  ]
+}
