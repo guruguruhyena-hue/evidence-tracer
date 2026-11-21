@@ -1,12 +1,13 @@
 {
   "name": "evidence-tracer",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "privacy:test": "node scripts/privacy-check.mjs",
     "build:vendor": "node scripts/build-vendor.mjs",
-    "serve": "python3 -m http.server 8080"
+    "serve": "python3 -m http.server 8080",
+    "syntax:test": "node --check app.js"
   },
   "dependencies": {
     "pdfjs-dist": "6.5.438"
