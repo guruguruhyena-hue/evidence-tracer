@@ -43,10 +43,46 @@ async function scanSolana(req){
       for(const sig of sigs){
         const tx=await rpc(url,'getTransaction',[sig.signature,{encoding:'jsonParsed',commitment:'finalized',maxSupportedTransactionVersion:0}]);
         if(!tx)continue;
-        for(const i of tx.transaction?.message?.instructions||[]){
-          const p=i.parsed;
+
+        const rawKeys=tx.transaction?.message?.accountKeys||[];
+        const keys=rawKeys.map(k=>typeof k==='string'?k:(k?.pubkey||''));
+        const senderIndex=keys.findIndex(k=>k===req.address);
+        const pre=tx.meta?.preBalances||[];
+        const post=tx.meta?.postBalances||[];
+
+        // Primary method: infer native SOL transfers from balance deltas.
+        // This survives versioned transactions and inner instructions.
+        if(senderIndex>=0 && pre[senderIndex]!=null && post[senderIndex]!=null){
+          const senderDelta=Number(post[senderIndex])-Number(pre[senderIndex]);
+          if(senderDelta<0){
+            for(let i=0;i<keys.length;i++){
+              if(i===senderIndex||!keys[i]||pre[i]==null||post[i]==null)continue;
+              const delta=Number(post[i])-Number(pre[i]);
+              if(delta>0){
+                out.push({
+                  chain:'sol',network:'Solana',txid:sig.signature,timestamp:tx.blockTime,block:tx.slot,
+                  from:req.address,to:keys[i],asset:'SOL',amount:units(String(delta),9),
+                  status:'finalized',detection:'balance_delta',source:'Solana JSON-RPC '+url,raw:tx
+                });
+              }
+            }
+          }
+        }
+
+        // Secondary method: parsed System Program transfers, including inner instructions.
+        const instructionGroups=[
+          ...(tx.transaction?.message?.instructions||[]),
+          ...((tx.meta?.innerInstructions||[]).flatMap(g=>g.instructions||[]))
+        ];
+        for(const i of instructionGroups){
+          const p=i?.parsed;
           if(p&&p.type==='transfer'&&p.info?.source===req.address&&p.info?.destination&&p.info?.lamports!=null){
-            out.push({chain:'sol',network:'Solana',txid:sig.signature,timestamp:tx.blockTime,block:tx.slot,from:req.address,to:p.info.destination,asset:'SOL',amount:units(p.info.lamports,9),status:'finalized',source:'Solana JSON-RPC '+url,raw:tx});
+            const candidate={
+              chain:'sol',network:'Solana',txid:sig.signature,timestamp:tx.blockTime,block:tx.slot,
+              from:req.address,to:p.info.destination,asset:'SOL',amount:units(String(p.info.lamports),9),
+              status:'finalized',detection:'parsed_instruction',source:'Solana JSON-RPC '+url,raw:tx
+            };
+            if(!out.some(x=>x.txid===candidate.txid&&x.to===candidate.to&&x.amount===candidate.amount)) out.push(candidate);
           }
         }
       }
