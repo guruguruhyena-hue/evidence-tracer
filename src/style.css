@@ -88,3 +88,26 @@ td code{overflow-wrap:anywhere;word-break:break-all}
  .results{border:none;overflow:visible}
  th{position:static}
 }
+
+/* v0.8: evidence-manifest and print-ready annex */
+#policeKit h3,.police-preview h3{margin:20px 0 10px;font-size:15px}
+#policeKit textarea{width:100%;resize:vertical;font:inherit;line-height:1.75;border:1px solid #cfd5dc;border-radius:10px;padding:12px;min-height:110px}
+#policeKit textarea:focus-visible{outline:3px solid #91b9fd}
+.police-address{word-break:break-all;overflow-wrap:anywhere;max-width:270px;font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px}
+.police-preview{line-height:1.75}
+.police-preview p{max-width:none}
+.police-preview ul{padding-left:25px}
+.police-preview li{margin:7px 0}
+.police-print-meta{font-size:12px;color:#596477}
+#policeManifest button{font-size:11px;padding:4px 9px}
+@media print{
+ body.police-print-mode > .wrap > :not(#policePreview){display:none!important}
+ body.police-print-mode #policePreview{display:block!important}
+ body.police-print-mode #policePreview .results{overflow:visible}
+ body.police-print-mode #policePreview table{font-size:9px;table-layout:fixed;overflow-wrap:anywhere}
+ body.police-print-mode #policePreview th,body.police-print-mode #policePreview td{padding:5px}
+ body.police-print-mode #policePreview h3{break-after:avoid}
+ body.police-print-mode #policePreview tr{break-inside:avoid}
+ body.police-print-mode .wrap{max-width:none}
+ @page{size:A4;margin:12mm}
+}
