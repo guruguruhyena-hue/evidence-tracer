@@ -3,6 +3,7 @@ const EVM_CHAINS=[
 {name:'Ethereum',chainId:'1',symbol:'ETH'},{name:'BNB Smart Chain',chainId:'56',symbol:'BNB'},{name:'Polygon',chainId:'137',symbol:'POL'},{name:'Arbitrum One',chainId:'42161',symbol:'ETH'},{name:'OP Mainnet',chainId:'10',symbol:'ETH'},{name:'Base',chainId:'8453',symbol:'ETH'},{name:'Avalanche C-Chain',chainId:'43114',symbol:'AVAX'},{name:'Linea',chainId:'59144',symbol:'ETH'},{name:'Scroll',chainId:'534352',symbol:'ETH'},{name:'zkSync Era',chainId:'324',symbol:'ETH'},{name:'HyperEVM',chainId:'999',symbol:'HYPE'},{name:'opBNB',chainId:'204',symbol:'BNB'}];
 let matches=[],lastMeta={};
 let sessionEvidencePool=[];
+let sessionScannedWallets=[];
 let importedLedger=[];
 let reconciliationResults=[];
 let importedSourceMeta=null;
@@ -29,12 +30,107 @@ async function rpc(url,method,params){const r=await fetch(url,{method:'POST',hea
   try{detail=' '+await r.text();}catch{}
   throw new Error('RPC HTTP '+r.status+detail.slice(0,180));
 }const j=await r.json();if(j.error)throw new Error(j.error.message);return j.result;}
-async function scanSolana(req){
-  const endpoints=req.rpcUrl?[req.rpcUrl]:[
+function solanaRpcEndpoints(custom){
+  return custom?[custom]:[
     'https://solana-rpc.publicnode.com',
     'https://public-solana-mainnet.rpcnode.dev',
     'https://api.mainnet.solana.com'
   ];
+}
+function rememberScannedWallet(chain,address,network){
+  const a=String(address||'').trim();
+  if(!a)return;
+  if(!sessionScannedWallets.some(x=>x.chain===chain&&x.address===a)){
+    sessionScannedWallets.push({chain,address:a,network:network||'',scannedAt:new Date().toISOString()});
+  }
+}
+function solanaKeys(tx){
+  return (tx?.transaction?.message?.accountKeys||[]).map(k=>typeof k==='string'?{pubkey:k}:{pubkey:k?.pubkey||'',signer:!!k?.signer,writable:!!k?.writable});
+}
+function extractSolanaSource(tx,row){
+  const expectedTo=String(row.destinationAddress||'');
+  const expectedAmount=Number(row.amount||0);
+  const groups=[
+    ...(tx?.transaction?.message?.instructions||[]),
+    ...((tx?.meta?.innerInstructions||[]).flatMap(g=>g.instructions||[]))
+  ];
+  for(const i of groups){
+    const p=i?.parsed;
+    if(p&&p.type==='transfer'&&p.info?.source&&p.info?.destination===expectedTo&&p.info?.lamports!=null){
+      const amt=Number(p.info.lamports)/1e9;
+      if(!Number.isFinite(expectedAmount)||amountClose(amt,expectedAmount)){
+        return {sourceAddress:p.info.source,destinationAddress:p.info.destination,amount:String(amt),method:'PARSED_SYSTEM_TRANSFER'};
+      }
+    }
+  }
+  const keys=solanaKeys(tx);
+  const pre=tx?.meta?.preBalances||[],post=tx?.meta?.postBalances||[];
+  const destIndex=keys.findIndex(k=>k.pubkey===expectedTo);
+  if(destIndex<0)return null;
+  const destDelta=(Number(post[destIndex]||0)-Number(pre[destIndex]||0))/1e9;
+  const negatives=[];
+  for(let i=0;i<keys.length;i++){
+    if(i===destIndex||pre[i]==null||post[i]==null)continue;
+    const delta=(Number(post[i])-Number(pre[i]))/1e9;
+    if(delta<0)negatives.push({address:keys[i].pubkey,delta,signer:keys[i].signer,writable:keys[i].writable});
+  }
+  negatives.sort((a,b)=>(Number(b.signer)-Number(a.signer))||(Math.abs(b.delta)-Math.abs(a.delta)));
+  const src=negatives[0];
+  if(!src)return null;
+  return {sourceAddress:src.address,destinationAddress:expectedTo,amount:String(destDelta),method:'BALANCE_DELTA',sourceDelta:String(src.delta)};
+}
+async function resolveSolanaTxSource(row,customRpc){
+  let lastErr=null;
+  for(const url of solanaRpcEndpoints(customRpc)){
+    try{
+      const tx=await rpc(url,'getTransaction',[row.txid,{encoding:'jsonParsed',commitment:'finalized',maxSupportedTransactionVersion:0}]);
+      if(!tx)throw new Error('Transaction not found');
+      const resolved=extractSolanaSource(tx,row);
+      if(!resolved)throw new Error('Could not identify source for destination '+row.destinationAddress);
+      return {...resolved,rpcUrl:url,block:tx.slot,timestamp:tx.blockTime,resolvedAt:new Date().toISOString()};
+    }catch(e){lastErr=e;if(customRpc)break;}
+  }
+  throw lastErr||new Error('Solana source resolution failed');
+}
+async function resolveUnknownSolanaSources(){
+  if(!reconciliationResults.length)throw new Error('Run reconciliation first.');
+  const targets=reconciliationResults.filter(r=>r.asset==='SOL'&&r.txid&&r.status!=='SELF_WALLET_CONFIRMED');
+  if(!targets.length)return {attempted:0,resolved:0,self:0,failed:0};
+  const custom=$('rpc')?.value.trim()||undefined;
+  let resolved=0,self=0,failed=0;
+  for(let i=0;i<targets.length;i++){
+    const r=targets[i];
+    $('sourceResolveStatus').textContent='Resolving SOL '+(i+1)+' / '+targets.length+'…';
+    try{
+      const info=await resolveSolanaTxSource(r,custom);
+      r.onchainSourceAddress=info.sourceAddress;
+      r.onchainDestinationAddress=info.destinationAddress;
+      r.onchainResolvedAmount=info.amount;
+      r.sourceResolutionMethod=info.method;
+      r.sourceResolvedAt=info.resolvedAt;
+      r.onchainBlock=info.block;
+      r.onchainTimestamp=info.timestamp;
+      r.sourceRpc=info.rpcUrl;
+      const own=sessionScannedWallets.some(w=>w.chain==='sol'&&w.address===info.sourceAddress);
+      if(own){
+        r.status='SELF_WALLET_CONFIRMED';
+        r.reason='PDF TxID resolved on-chain to a source address that matches a SOL wallet scanned in this browser session.';
+        self++;
+      }else{
+        r.status='ONCHAIN_SOURCE_RESOLVED';
+        r.reason='PDF TxID was resolved on-chain. Source address identified, but ownership/account attribution is not established.';
+      }
+      resolved++;
+    }catch(e){
+      r.sourceResolutionError=e.message;
+      failed++;
+    }
+    renderReconciliation();
+  }
+  return {attempted:targets.length,resolved,self,failed};
+}
+async function scanSolana(req){
+  const endpoints=solanaRpcEndpoints(req.rpcUrl);
   let lastErr=null;
   for(const url of endpoints){
     try{
@@ -403,7 +499,7 @@ function reconcileLedger(){
 function renderReconciliation(){
   const rows=$('reconRows'); if(!rows)return;rows.innerHTML='';
   for(const r of reconciliationResults){const tr=document.createElement('tr');tr.innerHTML=
-    '<td>'+esc(r.recordId)+'</td><td>'+esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):r.dateRaw||'—')+'</td><td>'+esc(r.asset)+'</td><td>'+esc(r.amount)+'</td><td><span class="pill">'+esc(r.status)+'</span></td><td>'+esc(r.reason)+(r.matchedEvidenceId?'<br><code>'+esc(r.matchedEvidenceId)+'</code>':'')+'</td>';rows.appendChild(tr);}
+    '<td>'+esc(r.recordId)+'</td><td>'+esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):r.dateRaw||'—')+'</td><td>'+esc(r.asset)+'</td><td>'+esc(r.amount)+'</td><td><span class="pill">'+esc(r.status)+'</span></td><td>'+esc(r.reason)+(r.matchedEvidenceId?'<br><code>'+esc(r.matchedEvidenceId)+'</code>':'')+(r.onchainSourceAddress?'<br>From: <code>'+esc(r.onchainSourceAddress)+'</code>':'')+(r.sourceResolutionMethod?'<br>Method: '+esc(r.sourceResolutionMethod):'')+(r.sourceResolutionError?'<br>Resolve error: '+esc(r.sourceResolutionError):'')+'</td>';rows.appendChild(tr);}
   const counts={};for(const r of reconciliationResults)counts[r.status]=(counts[r.status]||0)+1;
   $('reconSummary').textContent=reconciliationResults.length+' record(s): '+Object.entries(counts).map(([k,v])=>k+' '+v).join(' / ');
   $('reconDetails').innerHTML=reconciliationResults.length?'<h2>Reconciliation methodology</h2><p class="muted">SELF_WALLET_CONFIRMED = TxID exact match, or unique asset/amount/time match against evidence scanned in this browser session. SOURCE_UNKNOWN = no self-wallet match found; exchange/direct-service origin remains an investigative hypothesis until supported by exchange withdrawal records or other primary evidence.</p>':'';
@@ -412,7 +508,7 @@ function renderReconciliation(){
 function render(){const rows=$('rows');rows.innerHTML='';for(const r of matches){const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):'—')}</td><td>${esc(r.network)}</td><td>${esc(r.asset)}</td><td>${esc(r.amount)}</td><td><code>${esc(r.to)}</code></td><td><code>${esc(r.txid)}</code></td><td>${esc(r.classification)}</td><td>${esc((r.evidenceRefs||[]).join(', '))}</td>`;rows.appendChild(tr);}$('summary').textContent=matches.length+' matched transfer(s).';renderReportMeta();renderEvidenceDetails();}
 function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.chainId}">${c.name}</option>`).join('');
  const update=()=>{const k=$('kind').value;$('networkWrap').style.display='block';$('network').disabled=k!=='evm';$('networkWrap').style.opacity=k==='evm'?'1':'0.55';$('keyWrap').style.display=k==='evm'?'block':'none';$('rpcWrap').style.display=(k==='sol'||k==='xrp')?'block':'none';};$('kind').addEventListener('change',update);update();
- $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);scanRetrievedAt=new Date().toISOString();matches=matchTransfers(rec);matches=await enrichEvidenceRecords(matches);addToSessionPool(matches);const c=EVM_CHAINS.find(x=>x.chainId===req.network);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile)),retrievedAt:scanRetrievedAt,networkName:($('kind').value==='evm'&&c)?c.name:($('kind').value==='btc'?'Bitcoin':$('kind').value==='sol'?'Solana':'XRP Ledger')};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
+ $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);scanRetrievedAt=new Date().toISOString();rememberScannedWallet($('kind').value,address,$('kind').value==='evm'?(EVM_CHAINS.find(x=>x.chainId===req.network)?.name||'EVM'):$('kind').value);matches=matchTransfers(rec);matches=await enrichEvidenceRecords(matches);addToSessionPool(matches);const c=EVM_CHAINS.find(x=>x.chainId===req.network);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile)),retrievedAt:scanRetrievedAt,networkName:($('kind').value==='evm'&&c)?c.name:($('kind').value==='btc'?'Bitcoin':$('kind').value==='sol'?'Solana':'XRP Ledger')};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
  $('json').onclick=()=>download(exportBaseName()+'.json',JSON.stringify({meta:lastMeta,records:matches},null,2),'application/json');
  $('print').onclick=()=>{
   const oldTitle=document.title;
@@ -464,16 +560,27 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
    if(!importedLedger.length)return alert('PDFは選択されていますが、入金記録を抽出できませんでした。画面のImport statusを確認してください。');
    reconciliationResults=reconcileLedger();renderReconciliation();
  };
+ if($('resolveSolSources')) $('resolveSolSources').onclick=async()=>{
+   if(!reconciliationResults.length)return alert('先にReconcile imported recordsを実行してください。');
+   $('resolveSolSources').disabled=true;
+   try{
+     const r=await resolveUnknownSolanaSources();
+     $('sourceResolveStatus').textContent='SOL source resolution: '+r.resolved+' resolved / '+r.self+' matched scanned wallet / '+r.failed+' failed / '+r.attempted+' attempted.';
+   }catch(e){
+     $('sourceResolveStatus').textContent='SOL source resolution error: '+e.message;
+   }finally{$('resolveSolSources').disabled=false;}
+ };
  if($('exportRecon')) $('exportRecon').onclick=()=>{
    download('EvidenceTracer-Reconciliation-'+exportChainLabel()+'.json',JSON.stringify({
      generatedAt:new Date().toISOString(),
      sessionEvidenceCount:sessionEvidencePool.length,
+     scannedWallets:sessionScannedWallets,
      source:importedSourceMeta,
-     methodology:{confirmed:'TxID exact or unique asset/amount/time match against self-wallet evidence in this browser session',unknown:'No self-wallet match found; exchange/direct-service origin not proven'},
+     methodology:{confirmed:'TxID exact or unique asset/amount/time match against self-wallet evidence in this browser session',sourceResolved:'SOL TxID resolved through public/custom JSON-RPC; source address identification does not establish legal ownership or exchange attribution',unknown:'No self-wallet match found; exchange/direct-service origin not proven'},
      records:reconciliationResults
    },null,2),'application/json');
  };
 
- $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];importedLedger=[];reconciliationResults=[];importedSourceMeta=null;$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
+ $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];sessionScannedWallets=[];importedLedger=[];reconciliationResults=[];importedSourceMeta=null;$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
 }
 window.addEventListener('DOMContentLoaded',()=>{try{init();document.body.dataset.appReady='true';}catch(e){document.getElementById('boot-error').textContent='Application error: '+e.message;document.getElementById('boot-error').style.display='block';}});
