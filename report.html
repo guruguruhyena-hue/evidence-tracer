@@ -5,7 +5,7 @@
 <header class="hero no-print"><span class="badge">PRIVATE SESSION / LOCAL PROCESSING</span><h1>Police Evidence Pack</h1><p>警察提出用の資料整理・証拠目録（一般利用版）</p></header>
 <section class="card no-print">
 <h2>01 · ケース情報</h2>
-<p class="muted">事件名や説明は利用者が入力したときだけ表示されます。公開ページには事前登録された事件情報・個人アドレス・金額はありません。<strong>このページは保存機能を使わず、閉じると入力内容が消えます。</strong></p>
+<p class="muted">事件名や説明は利用者が入力したときだけ表示されます。公開ページには事前登録された事件情報・個人アドレス・金額はありません。<strong>このページはブラウザへの自動保存を行いません。ブラウザの復元機能などによる保持には注意してください。</strong></p>
 <div class="grid"><div><label for="caseTitle">事件名（任意）</label><input id="caseTitle" placeholder="例：暗号資産の出金未履行"></div><div><label for="reporter">提出者（任意）</label><input id="reporter" autocomplete="off" placeholder="本人の氏名など"></div></div>
 <label for="caseStatement">経緯・事実関係（本人申告）</label><textarea id="caseStatement" rows="6" placeholder="いつ、どのサービスで、何が起きたか。確認できた資料と未確認事項を分けて記載してください。"></textarea>
 </section>
@@ -33,9 +33,13 @@
 <p class="muted">前ページで保存した「Export reconciliation JSON」を読み込むと、照合状態の件数をレポートに記載できます。内容の真正性は再検証されず、<strong>派生資料・未再検証</strong>として扱います。</p>
 <input id="reconFile" type="file" accept=".json,application/json"><p id="reconStatus" class="muted" role="status">照合JSONは読み込まれていません。</p>
 </section>
-<section class="card no-print"><h2>05 · レポート作成</h2>
-<p class="muted">入力内容と出典を確認してプレビューしてください。PDFはブラウザの「印刷 → PDFに保存」で作成します。JSONには出金記録・ファイルハッシュ・照合の要約を含めます。原本ファイル自体は含まれません。</p>
-<div class="actions"><button id="makeReport" class="primary">レポートを作成</button><button id="printReport">印刷 / PDF保存</button><button id="exportPacket">提出用JSONを保存</button></div>
+<section class="card no-print"><h2>05 · 下書きの復元・レポート作成</h2>
+<p class="muted">以前出力した提出用JSONを読み込み、編集を再開できます。原本ファイル自体はJSONに含まれないため別途保管してください。</p>
+<label for="restorePacket">以前保存した提出用JSONを復元</label>
+<input id="restorePacket" type="file" accept=".json,application/json">
+<p class="muted">JSONには事件情報やウォレットアドレスが含まれます。<strong>公開リポジトリやSNSへアップロードしないでください。</strong></p>
+<p class="muted">入力内容と出典を確認してプレビューしてください。PDFはブラウザの「印刷 → PDFに保存」で作成します。JSONには出金記録・ファイルハッシュ・照合の要約を含めます。原本ファイル自体は含まれません。<strong>下書きのバックアップもこのJSONを使用します。</strong></p>
+<div class="actions"><button id="makeReport" class="primary">レポートを作成</button><button id="printReport">印刷 / PDF保存</button><button id="exportPacket">提出用JSONを保存</button><button id="clearCase">このページの事件情報を削除</button></div>
 <p id="reportStatus" role="status" class="muted"></p>
 </section>
 <section class="card report-preview" id="reportPreview"><h2>提出用レポートのプレビュー</h2><p>入力後、「レポートを作成」を選んでください。</p></section>
