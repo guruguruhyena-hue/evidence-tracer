@@ -166,29 +166,37 @@ function parseIzkyDepositPage(pageText,pageNumber,sourceName,pdfSha){
   return rows;
 }
 function parseIzkyDepositDocument(pages,sourceName,pdfSha){
-  const joined=pages.map(p=>'[[PAGE:'+p.page+']] '+p.text.replace(/\u00a0/g,' ').replace(/\r/g,' ').replace(/\n/g,' ').replace(/[ \t]+/g,' ')).join(' ');
+  // PDF.js can split Japanese text into many fragments with arbitrary spaces.
+  // Build a whitespace-free forensic parsing stream while keeping original page text for excerpts.
+  let compact='',pageRanges=[];let offset=0;
+  for(const p of pages){
+    const c=String(p.text||'').replace(/\s+/g,'');
+    pageRanges.push({page:p.page,start:offset,end:offset+c.length,original:p.text||''});
+    compact+=c;offset=compact.length;
+  }
+  const pageForPos=pos=>pageRanges.find(r=>pos>=r.start&&pos<r.end)?.page||pageRanges.at(-1)?.page||1;
   const rows=[];
-  const dateRe=/20\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}/g;
-  const dates=[...joined.matchAll(dateRe)];
+  const dateRe=/20\d{2}\/\d{2}\/\d{2}\d{2}:\d{2}/g;
+  const dates=[...compact.matchAll(dateRe)];
   for(let i=0;i<dates.length;i++){
-    const dmatch=dates[i], dateRaw=dmatch[0];
-    const segStart=dmatch.index;
-    const segEnd=i+1<dates.length?dates[i+1].index:Math.min(joined.length,segStart+1800);
-    const segment=joined.slice(segStart,segEnd);
-    if(!/を入金しました/.test(segment)) continue;
-    const amt=segment.match(/([\d,]+(?:\.\d+)?)\s+([A-Za-z0-9]+)(?:\s*\([^)]*\))?\s*を入金しました/);
+    const dm=dates[i],dateCompact=dm[0],segStart=dm.index;
+    const segEnd=i+1<dates.length?dates[i+1].index:Math.min(compact.length,segStart+2200);
+    const seg=compact.slice(segStart,segEnd);
+    if(!seg.includes('を入金しました')) continue;
+    const amt=seg.match(/([\d,]+(?:\.\d+)?)([A-Za-z0-9]+)(?:\([^)]*\))?を入金しました/);
     if(!amt) continue;
-    const wallet=(segment.match(/受信Walletアドレス\s*:\s*([^\s\[]+)/)||[])[1]||'';
-    const tag=(segment.match(/受信宛先タグ\s*:\s*([^\s\[]+)/)||[])[1]||'';
-    const txRaw=(segment.match(/TxID\s*:\s*([^\s\[]+)/)||[])[1]||'';
-    const exchangeDirect=/CryptoPanda\s*で交換を行いました/.test(segment);
-    const pageMarks=[...joined.slice(0,segStart).matchAll(/\[\[PAGE:(\d+)\]\]/g)];
-    const sourcePage=Number(pageMarks.at(-1)?.[1]||1);
+    const wallet=(seg.match(/受信Walletアドレス:([^\[\]]+?)(?=受信宛先タグ:|TxID:|CryptoPanda|20\d{2}\/|$)/)||[])[1]||'';
+    const tag=(seg.match(/受信宛先タグ:([^\[\]]+?)(?=TxID:|20\d{2}\/|$)/)||[])[1]||'';
+    const txRaw=(seg.match(/TxID:([^\[\]]+?)(?=20\d{2}\/|$)/)||[])[1]||'';
+    const exchangeDirect=seg.includes('CryptoPandaで交換を行いました');
+    const page=pageForPos(segStart);
+    const dateRaw=dateCompact.slice(0,10)+' '+dateCompact.slice(10);
     const d=new Date(dateRaw.replace(/\//g,'-').replace(' ','T')+':00+09:00');
     const amount=String(amt[1]).replaceAll(',','');
     const asset=normalizeIzkyAsset(amt[2]);
+    const original=pageRanges.find(r=>r.page===page)?.original||'';
     rows.push({
-      recordId:'IZKY-PDF-P'+sourcePage+'-'+String(rows.length+1).padStart(3,'0'),
+      recordId:'IZKY-PDF-P'+page+'-'+String(rows.length+1).padStart(3,'0'),
       timestamp:Number.isNaN(d.getTime())?null:Math.floor(d.getTime()/1000),
       dateRaw,asset,amount,
       txid:txRaw==='-'?'':txRaw,
@@ -197,10 +205,10 @@ function parseIzkyDepositDocument(pages,sourceName,pdfSha){
       sourceType:'PDF',
       sourceFileName:sourceName,
       sourcePdfSha256:pdfSha,
-      sourcePage,
-      sourceExcerpt:segment.replace(/\[\[PAGE:\d+\]\]/g,'').trim().slice(0,1600),
+      sourcePage:page,
+      sourceExcerpt:original.slice(0,1800),
       sourceRoute:exchangeDirect?'CRYPTOPANDA_EXCHANGE_RECORDED':'ONCHAIN_DEPOSIT_RECORDED',
-      raw:{page:sourcePage,text:segment.replace(/\[\[PAGE:\d+\]\]/g,'').trim()}
+      raw:{page,compactSegment:seg.slice(0,1800)}
     });
   }
   return rows;
@@ -223,7 +231,7 @@ async function parsePdfLedgerFile(file){
     pages.push({page:p,text});
   }
   const rows=parseIzkyDepositDocument(pages,file.name,pdfSha);
-  return {rows,meta:{sourceType:'PDF',sourceFileName:file.name,sourcePdfSha256:pdfSha,pageCount:doc.numPages,parsedRecordCount:rows.length,pagesWithText:pages.filter(x=>x.text.trim()).length}};
+  return {rows,meta:{sourceType:'PDF',sourceFileName:file.name,sourcePdfSha256:pdfSha,pageCount:doc.numPages,parsedRecordCount:rows.length,pagesWithText:pages.filter(x=>x.text.trim()).length,textChars:pages.reduce((n,x)=>n+x.text.length,0),containsDepositPhrase:pages.some(x=>x.text.replace(/\\s+/g,'').includes('を入金しました'))}};
 }
 function parseCsvLine(line){
   const out=[];let cur='',q=false;
@@ -327,7 +335,7 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
      importedLedger=await parseLedgerFile(file);
      $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) extracted locally from '+(importedSourceMeta?.sourceType||'file')+'. Nothing uploaded to a server.'+
        (importedSourceMeta?.sourcePdfSha256?' PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'')+
-       (importedLedger.length===0?' No deposit records were extracted. This PDF may not be an IZAKA-YA deposit-history PDF or its text layout may be unsupported.':'');
+       (importedLedger.length===0?' No deposit records were extracted. PDF text chars: '+(importedSourceMeta?.textChars??'unknown')+', deposit phrase detected: '+String(importedSourceMeta?.containsDepositPhrase??false)+'.':'');
    }catch(e){importedLedger=[];$('reconStatus').textContent='Import error: '+e.message;}
  });
  if($('reconcile')) $('reconcile').onclick=async()=>{
