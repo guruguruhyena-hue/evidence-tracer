@@ -29,7 +29,7 @@ jobs:
       - name: Vendor PDF.js locally
         run: npm run build:vendor
       - name: Runtime syntax checks
-        run: npm run syntax:test && node --check report.js
+        run: npm run syntax:test && node --check report.js && node --check tx-verify.js
       - name: Reconciliation regression tests
         run: npm run reconciliation:test
       - name: Police report validation tests
