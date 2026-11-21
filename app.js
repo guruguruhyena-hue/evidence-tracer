@@ -127,31 +127,40 @@ function normalizeIzkyAsset(raw){
   return String(raw||'').replace(/\s*\((ERC20|BEP20|TRC20|SPL)\)\s*/gi,'').trim().toUpperCase();
 }
 function parseIzkyDepositPage(pageText,pageNumber,sourceName,pdfSha){
-  const cleaned=pageText.replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').replace(/\r/g,'');
-  const re=/(20\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2})\s*\n\s*([\d,]+(?:\.\d+)?)\s+([A-Za-z0-9]+)(?:\s*\([^\n)]*\))?\s*を入金しました([\s\S]*?)(?=\n\s*20\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}|$)/g;
-  const rows=[];let m;
-  while((m=re.exec(cleaned))){
-    const block=m[0];
-    const wallet=(block.match(/受信Walletアドレス\s*:\s*([^\s\n]+)/)||[])[1]||'';
-    const tag=(block.match(/受信宛先タグ\s*:\s*([^\s\n]+)/)||[])[1]||'';
-    const txid=(block.match(/TxID\s*:\s*([^\s\n]+)/)||[])[1]||'';
-    const amount=String(m[2]).replaceAll(',','');
-    const asset=normalizeIzkyAsset(m[3]);
-    const d=new Date(m[1].replace(/\//g,'-').replace(' ','T')+':00+09:00');
+  const cleaned=pageText.replace(/\u00a0/g,' ').replace(/\r/g,' ').replace(/\n/g,' ').replace(/[ \t]+/g,' ').trim();
+  const rows=[];
+  const txRe=/TxID\s*:\s*([^\s]+)/g;
+  let m,ordinal=0;
+  while((m=txRe.exec(cleaned))){
+    const txid=m[1]==='-'?'':m[1];
+    const before=cleaned.slice(Math.max(0,m.index-900),m.index);
+    const dateMatches=[...before.matchAll(/20\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}/g)];
+    const amountMatches=[...before.matchAll(/([\d,]+(?:\.\d+)?)\s+([A-Za-z0-9]+)(?:\s*\([^)]*\))?\s*を入金しました/g)];
+    const walletMatches=[...before.matchAll(/受信Walletアドレス\s*:\s*([^\s]+)/g)];
+    const tagMatches=[...before.matchAll(/受信宛先タグ\s*:\s*([^\s]+)/g)];
+    const dateRaw=dateMatches.at(-1)?.[0]||'';
+    const amountMatch=amountMatches.at(-1);
+    const wallet=walletMatches.at(-1)?.[1]||'';
+    if(!dateRaw || !amountMatch || !wallet) continue;
+    const amount=String(amountMatch[1]).replaceAll(',','');
+    const asset=normalizeIzkyAsset(amountMatch[2]);
+    const d=new Date(dateRaw.replace(/\//g,'-').replace(' ','T')+':00+09:00');
+    const excerptStart=Math.max(0, before.lastIndexOf(dateRaw));
+    const sourceExcerpt=(before.slice(excerptStart)+cleaned.slice(m.index,txRe.lastIndex)).trim().slice(0,1400);
+    ordinal++;
     rows.push({
-      recordId:'IZKY-PDF-P'+pageNumber+'-'+String(rows.length+1).padStart(3,'0'),
+      recordId:'IZKY-PDF-P'+pageNumber+'-'+String(ordinal).padStart(3,'0'),
       timestamp:Number.isNaN(d.getTime())?null:Math.floor(d.getTime()/1000),
-      dateRaw:m[1],
-      asset,amount,
-      txid:txid==='-'?'':txid,
+      dateRaw,
+      asset,amount,txid,
       destinationAddress:wallet,
-      destinationTag:tag,
+      destinationTag:tagMatches.at(-1)?.[1]||'',
       sourceType:'PDF',
       sourceFileName:sourceName,
       sourcePdfSha256:pdfSha,
       sourcePage:pageNumber,
-      sourceExcerpt:block.trim().slice(0,1200),
-      raw:{page:pageNumber,text:block.trim()}
+      sourceExcerpt,
+      raw:{page:pageNumber,text:sourceExcerpt}
     });
   }
   return rows;
@@ -277,11 +286,12 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
      if(!file){importedLedger=[];$('reconStatus').textContent='No IZAKA-YA records loaded.';return;}
      importedLedger=await parseLedgerFile(file);
      $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) loaded locally from '+(importedSourceMeta?.sourceType||'file')+'. Nothing uploaded to a server.'+
-       (importedSourceMeta?.sourcePdfSha256?' PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'');
+       (importedSourceMeta?.sourcePdfSha256?' PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'')+
+       (importedLedger.length===0?' No deposit records were extracted. This PDF may not be an IZAKA-YA deposit-history PDF or its text layout may be unsupported.':'');
    }catch(e){importedLedger=[];$('reconStatus').textContent='Import error: '+e.message;}
  });
  if($('reconcile')) $('reconcile').onclick=()=>{
-   if(!importedLedger.length)return alert('IZAKA-YAのCSVまたはJSONを先に読み込んでください。');
+   if(!importedLedger.length)return alert('IZAKA-YAのPDF / CSV / JSONを先に読み込んでください。読み込み後、抽出件数が0件の場合はPDF形式を確認してください。');
    reconciliationResults=reconcileLedger();renderReconciliation();
  };
  if($('exportRecon')) $('exportRecon').onclick=()=>{
