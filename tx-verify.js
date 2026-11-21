@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);let last=null;
 const NETWORKS={
  '8453':{label:'Base',chainHex:'0x2105',urls:['https://base.blockscout.com/api/v2','https://api.blockscout.com/8453/api/v2'],rpcs:['https://mainnet.base.org','https://base-rpc.publicnode.com'],explorer:'https://base.blockscout.com/tx/'},
- '10':{label:'Optimism',chainHex:'0xa',urls:['https://optimism.blockscout.com/api/v2','https://api.blockscout.com/10/api/v2'],rpcs:['https://mainnet.optimism.io','https://optimism-rpc.publicnode.com'],explorer:'https://optimism.blockscout.com/tx/'}
+ '10':{label:'Optimism',chainHex:'0xa',urls:['https://explorer.optimism.io/api/v2','https://optimism.blockscout.com/api/v2','https://api.blockscout.com/10/api/v2'],rpcs:['https://mainnet.optimism.io','https://optimism-rpc.publicnode.com','https://optimism.drpc.org'],explorer:'https://explorer.optimism.io/tx/'}
 };
 const text=(tag,value)=>{const n=document.createElement(tag);n.textContent=String(value??'—');return n;};
 const address=a=>typeof a==='string'?a:(a?.hash||'—');
@@ -73,16 +73,25 @@ async function lookupRpc(chain,hash,failures){
 
 async function lookup(chain,hash,customRpc){
  const failures=[];
+ // A user-provided RPC should take priority; bypass explorer lookups if configured.
+ if(customRpc)return lookupRpc({...chain,rpcs:[customRpc,...chain.rpcs]},hash,failures);
  for(const base of chain.urls){
   try{
    const tx=await json(base+'/transactions/'+hash);
    if(!tx||!tx.hash||String(tx.hash).toLowerCase()!==hash.toLowerCase())throw Error('TxID is missing or does not match');
-   const token=await json(base+'/transactions/'+hash+'/token-transfers');
-   if(!Array.isArray(token?.items))throw Error('Token transfer response invalid');
-   return {tx,tokenTransfers:token.items,source:base,sourceType:'BLOCKSCOUT_API',warnings:[]};
+   let tokenTransfers=Array.isArray(tx.token_transfers)?tx.token_transfers:[];
+   const warnings=[];
+   try {
+    const token=await json(base+'/transactions/'+hash+'/token-transfers');
+    if(Array.isArray(token?.items))tokenTransfers=token.items;
+    else warnings.push('Token Transfer API returned an unexpected response; using transfers embedded in transaction when available');
+   }catch(e){
+    warnings.push('Token Transfer endpoint unavailable ('+e.message+'); transaction From/status remains usable');
+   }
+   return {tx,tokenTransfers,source:base,sourceType:'BLOCKSCOUT_API',warnings};
   }catch(e){failures.push(base+': '+e.message);}
  }
- return lookupRpc({...chain,rpcs:customRpc?[customRpc,...chain.rpcs]:chain.rpcs},hash,failures);
+ return lookupRpc(chain,hash,failures);
 }
 function setDetails(id,entries){
  const root=$(id);root.replaceChildren();
@@ -102,7 +111,7 @@ function show(out,chain){
   const cells=[a.token?.symbol||a.token?.name||'—',readableAmount(a)+(a.amountNote?' (raw units)':''),address(a.from),address(a.to),a.token?.address||'—'];
   for(const c of cells){const td=text('td',c);td.className='breakable';tr.append(td);}tb.append(tr);
  }
- if(!out.tokenTransfers.length){const tr=document.createElement('tr'),td=text('td','トークン移動は返されませんでした。');td.colSpan=5;tr.append(td);tb.append(tr);}
+ if(!out.tokenTransfers.length){const tr=document.createElement('tr'),td=text('td','トークン移動は取得できませんでした。送信者確認とトークン移転の確認は別です。');td.colSpan=5;tr.append(td);tb.append(tr);}
 }
 $('verifyButton').addEventListener('click',async()=>{
  const hash=$('verifyHash').value.trim(),chain=NETWORKS[$('verifyNetwork').value];
