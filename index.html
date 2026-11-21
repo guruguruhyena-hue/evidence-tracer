@@ -24,5 +24,17 @@
   <div id="reconDetails" class="evidence-details"></div>
 </section>
 
-<section class="card"><b>Evidence Tracer v0.4.0</b><p class="muted">Static single-file runtime. Server-side storage: NONE · Analytics: NONE · Wallet connection: NONE.</p></section></div>
+<section class="card">
+  <h2>Deposit Summary / 入金集計</h2>
+  <p id="depositSummaryMeta" class="muted">No deposit records loaded.</p>
+  <div class="results">
+    <table class="summary-table">
+      <thead><tr><th>Chain</th><th>Asset</th><th>入金件数</th><th>Total 入金額</th><th>Self-wallet confirmed</th><th>On-chain source resolved</th><th>Source unknown</th><th>Internal exchange</th><th>No TxID</th></tr></thead>
+      <tbody id="depositSummaryRows"></tbody>
+    </table>
+  </div>
+  <p class="muted">※ 通貨単位が異なるため、BTC・ETH・SOL・XRP・USDC等を1つの金額へ合算していません。Totalは各Asset単位の合計です。Internal exchangeは外部流入総額へ単純加算しない前提です。</p>
+</section>
+
+<section class="card"><b>Evidence Tracer v0.4.1</b><p class="muted">Static single-file runtime. Server-side storage: NONE · Analytics: NONE · Wallet connection: NONE.</p></section></div>
 <script src="./app.js" defer></script></body></html>
