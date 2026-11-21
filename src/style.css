@@ -111,3 +111,8 @@ td code{overflow-wrap:anywhere;word-break:break-all}
  body.police-print-mode .wrap{max-width:none}
  @page{size:A4;margin:12mm}
 }
+
+/* Private local destination configuration */
+#localTargets{width:100%;resize:vertical;min-height:92px;line-height:1.7;font:13px ui-monospace,SFMono-Regular,Consolas,monospace;padding:12px;border-radius:9px;border:1px solid #ccd5e4;background:#fff;overflow-wrap:anywhere}
+#localTargets:focus-visible{outline:3px solid #91b9fd}
+#localTargetsStatus{margin:8px 0 0}
