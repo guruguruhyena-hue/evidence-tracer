@@ -8,6 +8,7 @@ const WITHDRAWALS=[
  {id:'WD-20260830-XRP',time:'2026-08-30 07:41',asset:'XRP',principal:'461.356718',profit:'37.91973',requested:'499.076448',address:'rnp2Keixnwq28wDXbgjZcQwtKBYMB15KVf'}
 ];
 let manifest=[];
+let importedReconciliation=null;
 const $=id=>document.getElementById(id);
 const make=(tag,text,cls)=>{const el=document.createElement(tag);if(cls)el.className=cls;el.textContent=text??'';return el;};
 const clean=(s)=>String(s??'');
@@ -31,7 +32,7 @@ function localReconciliation(){
      return {source:'current_browser_reconciliation',count:reconciliationResults.length,statusCounts:counts,records:reconciliationResults.map(r=>({id:r.recordId,asset:r.asset,amount:r.amount,txid:r.txid,status:r.status,reason:r.reason,sourcePage:r.sourcePage,sourceResolutionError:r.sourceResolutionError,baseResolutionError:r.baseResolutionError}))};
    }
  }catch{}
- return null;
+ return importedReconciliation;
 }
 function drawWithdrawalRows(){
  const tbody=$('policeWithdrawals');if(!tbody)return;tbody.replaceChildren();
@@ -51,7 +52,7 @@ function renderManifest(){
      const td=make('td',v);if(v===e.sha256)td.className='police-address';tr.append(td);
    }
    const td=document.createElement('td'),button=make('button','除外');button.type='button';
-   button.addEventListener('click',()=>{manifest.splice(i,1);renderManifest();});
+   button.addEventListener('click',()=>{if(importedReconciliation?.sourceDocumentSha256===e.sha256)importedReconciliation=null;manifest.splice(i,1);renderManifest();});
    td.append(button);tr.append(td);list.append(tr);
  }
  $('policeManifestStatus').textContent=manifest.length+'件のファイルを記録しました。原本ファイルはアプリに保存されません。';
@@ -62,6 +63,23 @@ async function registerFiles(files){
    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buf))).map(x=>x.toString(16).padStart(2,'0')).join('');
    if(manifest.some(x=>x.sha256===hash&&x.name===file.name))continue;
    manifest.push({id:'DOC-'+String(manifest.length+1).padStart(3,'0'),name:file.name,size:file.size,mime:file.type||'',sha256:hash,recordedAt:new Date().toISOString(),role:inferRole(file.name)});
+   // Import previous exports as derivative evidence, not as verified raw chain data.
+   if(/\.json$/i.test(file.name)){
+     try{
+       const j=JSON.parse(new TextDecoder().decode(buf));
+       if(Array.isArray(j.records)&&j.records.every(r=>r&&typeof r==='object')&&
+          j.records.some(r=>'status' in r)&&
+          (j.source||j.methodology||j.generatedAt)){
+         const counts={};
+         for(const r of j.records)counts[clean(r.status||'UNSPECIFIED')]=(counts[clean(r.status||'UNSPECIFIED')]||0)+1;
+         importedReconciliation={source:'imported_reconciliation_json_unverified',count:j.records.length,statusCounts:counts,sourceDocumentSha256:hash,records:j.records.map(r=>({
+          id:r.recordId||null,asset:r.asset||null,amount:r.amount||null,txid:r.txid||null,
+          status:r.status||null,reason:r.reason||null,sourcePage:r.sourcePage||null,
+          sourceResolutionError:r.sourceResolutionError||null,baseResolutionError:r.baseResolutionError||null
+         }))};
+       }
+     }catch{}
+   }
  }
  renderManifest();
 }
@@ -92,6 +110,7 @@ function assemble(){
    '差額は融資終了元本と表示利益の和から出金申請額を引いた算術値であり、手数料と確定したものではない。',
    '内部交換・融資の元本再投入・表示利益を外部新規入金として重複加算しない。',
    'SimpleSwap / ChangeNOWの交換関連性は出金TXと注文履歴が照合できるまで確定しない。',
+   '以前の照合JSONを読み込んだ場合、その内容は再検証済みではなく、読み込み済みの派生証拠として扱う。',
    'SHA-256は利用者が選択したバイト列の識別値。取得元の真正性を単独で証明するものではない。',
    '証拠原本（PDF・メール・スクリーンショット・TxID）は必ず別に保管して提出する。'
   ]
@@ -124,7 +143,7 @@ function renderPreview(){
  host.append(make('h3','5．Evidence Tracer照合状況'));
  if(packet.reconciliation){
   const entries=Object.entries(packet.reconciliation.statusCounts).map(([k,v])=>k+': '+v).join(' / ');
-  host.append(make('p',packet.reconciliation.count+'件：'+entries+'。この数値は現在のブラウザの照合結果に基づきます。'));
+  host.append(make('p',packet.reconciliation.count+'件：'+entries+'。出典：'+(packet.reconciliation.source==='current_browser_reconciliation'?'ブラウザ内の最新照合':'読み込み済み照合JSON（未再検証）')+'。'));
  }else host.append(make('p','未読み込み：照合JSONは生成されていません。Trace結果を照合してから本レポートを作り直してください。'));
  host.append(make('h3','6．調査上の留意事項'));
  const ul=document.createElement('ul');for(const t of packet.limitations)ul.append(make('li',t));host.append(ul);
