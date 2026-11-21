@@ -5,6 +5,7 @@ let matches=[],lastMeta={};
 let sessionEvidencePool=[];
 let importedLedger=[];
 let reconciliationResults=[];
+let importedSourceMeta=null;
 let scanRetrievedAt=null;
 const knownProfile={
  caseProfile:'IZAKA-YA',version:'2026-11-22.1',
@@ -112,6 +113,70 @@ function addToSessionPool(records){
   const existing=new Set(sessionEvidencePool.map(key));
   for(const r of records){const k=key(r);if(!existing.has(k)){sessionEvidencePool.push(r);existing.add(k);}}
 }
+
+async function sha256Bytes(buffer){
+  const b=await crypto.subtle.digest('SHA-256',buffer);
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function loadPdfJs(){
+  const pdfjs=await import('./vendor/pdf.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc='./vendor/pdf.worker.mjs';
+  return pdfjs;
+}
+function normalizeIzkyAsset(raw){
+  return String(raw||'').replace(/\s*\((ERC20|BEP20|TRC20|SPL)\)\s*/gi,'').trim().toUpperCase();
+}
+function parseIzkyDepositPage(pageText,pageNumber,sourceName,pdfSha){
+  const cleaned=pageText.replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').replace(/\r/g,'');
+  const re=/(20\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2})\s*\n\s*([\d,]+(?:\.\d+)?)\s+([A-Za-z0-9]+)(?:\s*\([^\n)]*\))?\s*を入金しました([\s\S]*?)(?=\n\s*20\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}|$)/g;
+  const rows=[];let m;
+  while((m=re.exec(cleaned))){
+    const block=m[0];
+    const wallet=(block.match(/受信Walletアドレス\s*:\s*([^\s\n]+)/)||[])[1]||'';
+    const tag=(block.match(/受信宛先タグ\s*:\s*([^\s\n]+)/)||[])[1]||'';
+    const txid=(block.match(/TxID\s*:\s*([^\s\n]+)/)||[])[1]||'';
+    const amount=String(m[2]).replaceAll(',','');
+    const asset=normalizeIzkyAsset(m[3]);
+    const d=new Date(m[1].replace(/\//g,'-').replace(' ','T')+':00+09:00');
+    rows.push({
+      recordId:'IZKY-PDF-P'+pageNumber+'-'+String(rows.length+1).padStart(3,'0'),
+      timestamp:Number.isNaN(d.getTime())?null:Math.floor(d.getTime()/1000),
+      dateRaw:m[1],
+      asset,amount,
+      txid:txid==='-'?'':txid,
+      destinationAddress:wallet,
+      destinationTag:tag,
+      sourceType:'PDF',
+      sourceFileName:sourceName,
+      sourcePdfSha256:pdfSha,
+      sourcePage:pageNumber,
+      sourceExcerpt:block.trim().slice(0,1200),
+      raw:{page:pageNumber,text:block.trim()}
+    });
+  }
+  return rows;
+}
+async function parsePdfLedgerFile(file){
+  const buffer=await file.arrayBuffer();
+  const pdfSha=await sha256Bytes(buffer.slice(0));
+  const pdfjs=await loadPdfJs();
+  const doc=await pdfjs.getDocument({data:new Uint8Array(buffer)}).promise;
+  const rows=[];const pages=[];
+  for(let p=1;p<=doc.numPages;p++){
+    const page=await doc.getPage(p);
+    const content=await page.getTextContent();
+    let text='';
+    for(const item of content.items){
+      if(!('str' in item))continue;
+      text+=item.str;
+      text+=item.hasEOL?'\n':' ';
+    }
+    pages.push({page:p,text});
+    rows.push(...parseIzkyDepositPage(text,p,file.name,pdfSha));
+  }
+  return {rows,meta:{sourceType:'PDF',sourceFileName:file.name,sourcePdfSha256:pdfSha,pageCount:doc.numPages,parsedRecordCount:rows.length,pagesWithText:pages.filter(x=>x.text.trim()).length}};
+}
+
 function parseCsvLine(line){
   const out=[];let cur='',q=false;
   for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}else if(c===','&&!q){out.push(cur);cur='';}else cur+=c;}out.push(cur);return out;
@@ -133,7 +198,13 @@ function normalizeLedgerRow(row,index){
   };
 }
 async function parseLedgerFile(file){
+  if(file.name.toLowerCase().endsWith('.pdf')||file.type==='application/pdf'){
+    const result=await parsePdfLedgerFile(file);
+    importedSourceMeta=result.meta;
+    return result.rows;
+  }
   const text=await file.text();
+  importedSourceMeta={sourceType:file.name.toLowerCase().endsWith('.json')?'JSON':'CSV',sourceFileName:file.name,sourceSha256:await sha256(text)};
   if(file.name.toLowerCase().endsWith('.json')||text.trim().startsWith('[')||text.trim().startsWith('{')){
     const parsed=JSON.parse(text);const rows=Array.isArray(parsed)?parsed:(parsed.records||parsed.transactions||parsed.data||[]);
     if(!Array.isArray(rows))throw new Error('JSON内の取引配列を認識できません。');
@@ -205,7 +276,8 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
      const file=ledgerFile.files&&ledgerFile.files[0];
      if(!file){importedLedger=[];$('reconStatus').textContent='No IZAKA-YA records loaded.';return;}
      importedLedger=await parseLedgerFile(file);
-     $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) loaded locally. Nothing uploaded to a server.';
+     $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) loaded locally from '+(importedSourceMeta?.sourceType||'file')+'. Nothing uploaded to a server.'+
+       (importedSourceMeta?.sourcePdfSha256?' PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'');
    }catch(e){importedLedger=[];$('reconStatus').textContent='Import error: '+e.message;}
  });
  if($('reconcile')) $('reconcile').onclick=()=>{
@@ -216,11 +288,12 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
    download('EvidenceTracer-Reconciliation-'+exportChainLabel()+'.json',JSON.stringify({
      generatedAt:new Date().toISOString(),
      sessionEvidenceCount:sessionEvidencePool.length,
+     source:importedSourceMeta,
      methodology:{confirmed:'TxID exact or unique asset/amount/time match against self-wallet evidence in this browser session',unknown:'No self-wallet match found; exchange/direct-service origin not proven'},
      records:reconciliationResults
    },null,2),'application/json');
  };
 
- $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];importedLedger=[];reconciliationResults=[];$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
+ $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];importedLedger=[];reconciliationResults=[];importedSourceMeta=null;$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
 }
 window.addEventListener('DOMContentLoaded',()=>{try{init();document.body.dataset.appReady='true';}catch(e){document.getElementById('boot-error').textContent='Application error: '+e.message;document.getElementById('boot-error').style.display='block';}});
