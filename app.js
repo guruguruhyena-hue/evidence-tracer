@@ -24,12 +24,111 @@ function norm(chain,a){return chain==='evm'?String(a).toLowerCase():String(a);}
 function matchTransfers(records){return records.flatMap(r=>{const hit=knownProfile.addresses.find(k=>k.chain===r.chain&&norm(k.chain,k.address)===norm(k.chain,r.to));return hit?[Object.assign({},r,{matchedAddressId:hit.id,classification:hit.classification,evidenceLevel:hit.evidenceLevel,evidenceRefs:hit.evidenceRefs})]:[];});}
 async function scanBitcoin(req){const API='https://blockstream.info/api';const res=await fetch(`${API}/address/${encodeURIComponent(req.address)}/txs`,{cache:'no-store'});if(!res.ok)throw new Error('Bitcoin API error '+res.status);const all=await res.json(),out=[];for(const tx of all.slice(0,req.maxRecords||200)){if(!(tx.vin||[]).some(v=>v.prevout&&v.prevout.scriptpubkey_address===req.address))continue;for(const vout of tx.vout||[]){const to=vout.scriptpubkey_address;if(!to||to===req.address)continue;out.push({chain:'btc',network:'Bitcoin',txid:tx.txid,timestamp:tx.status&&tx.status.block_time||null,from:req.address,to,asset:'BTC',amount:units(vout.value,8),status:tx.status&&tx.status.confirmed?'confirmed':'pending',raw:tx});}}return out;}
 async function evmQuery(params){const u=new URL('https://api.etherscan.io/v2/api');Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));const r=await fetch(u);if(!r.ok)throw new Error('Etherscan HTTP '+r.status);const j=await r.json();if(j.status==='0'&&!String(j.message||'').toLowerCase().includes('no transactions'))throw new Error(String(j.result||j.message||'Etherscan API error'));return Array.isArray(j.result)?j.result:[];}
-async function scanEvm(req){if(!req.apiKey)throw new Error('Etherscan API keyが必要です。ブラウザメモリにのみ保持されます。');const c=EVM_CHAINS.find(x=>x.chainId===req.network);const base={chainid:c.chainId,module:'account',address:req.address,startblock:'0',endblock:'999999999',page:'1',offset:String(req.maxRecords||200),sort:'asc',apikey:req.apiKey};const [normal,token]=await Promise.all([evmQuery({...base,action:'txlist'}),evmQuery({...base,action:'tokentx'})]);const a=req.address.toLowerCase(),out=[];for(const t of normal){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:c.symbol,amount:units(t.value,18),status:t.isError==='0'?'confirmed':'unknown',raw:t});}for(const t of token){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:t.tokenSymbol||'TOKEN',amount:units(t.value,t.tokenDecimal),status:'confirmed',raw:t});}return out;}
+async function scanEvm(req){if(req.network==='8453')throw new Error('Baseの全アドレス履歴スキャンは公開RPCだけでは列挙できません。下のPDF入金照合で「Resolve Base sources from TxID」を使用してください。Etherscan有料プランは不要です。');if(!req.apiKey)throw new Error('Etherscan API keyが必要です。ブラウザメモリにのみ保持されます。');const c=EVM_CHAINS.find(x=>x.chainId===req.network);const base={chainid:c.chainId,module:'account',address:req.address,startblock:'0',endblock:'999999999',page:'1',offset:String(req.maxRecords||200),sort:'asc',apikey:req.apiKey};const [normal,token]=await Promise.all([evmQuery({...base,action:'txlist'}),evmQuery({...base,action:'tokentx'})]);const a=req.address.toLowerCase(),out=[];for(const t of normal){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:c.symbol,amount:units(t.value,18),status:t.isError==='0'?'confirmed':'unknown',raw:t});}for(const t of token){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:t.tokenSymbol||'TOKEN',amount:units(t.value,t.tokenDecimal),status:'confirmed',raw:t});}return out;}
 async function rpc(url,method,params){const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok){
   let detail='';
   try{detail=' '+await r.text();}catch{}
   throw new Error('RPC HTTP '+r.status+detail.slice(0,180));
 }const j=await r.json();if(j.error)throw new Error(j.error.message);return j.result;}
+const BASE_MAINNET_RPC='https://mainnet.base.org';
+const ERC20_TRANSFER_TOPIC='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+function evmTopicAddress(topic){
+  const t=String(topic||'').toLowerCase();
+  return /^0x[0-9a-f]{64}$/.test(t)?('0x'+t.slice(-40)):null;
+}
+function hexToDecimalString(hex,decimals=0){
+  if(!hex||hex==='0x')return '0';
+  let n=BigInt(hex),d=Number(decimals||0);
+  let str=n.toString();
+  if(!d)return str;
+  str=str.padStart(d+1,'0');
+  const a=str.slice(0,-d),b=str.slice(-d).replace(/0+$/,'');
+  return b?a+'.'+b:a;
+}
+async function baseTokenDecimals(contract){
+  try{
+    const result=await rpc(BASE_MAINNET_RPC,'eth_call',[{to:contract,data:'0x313ce567'},'latest']);
+    return Number(BigInt(result));
+  }catch{return null;}
+}
+async function resolveBaseTxSource(row){
+  const expectedTo=String(row.destinationAddress||'').toLowerCase();
+  if(!/^0x[0-9a-f]{40}$/.test(expectedTo))throw new Error('Invalid/missing EVM destination address in imported record.');
+  const tx=await rpc(BASE_MAINNET_RPC,'eth_getTransactionByHash',[row.txid]);
+  if(!tx) return null; // Tx is not on Base.
+  const receipt=await rpc(BASE_MAINNET_RPC,'eth_getTransactionReceipt',[row.txid]);
+  if(!receipt)throw new Error('Base receipt not found.');
+
+  // Native ETH transfer directly to the IZAKA-YA deposit address.
+  if(String(tx.to||'').toLowerCase()===expectedTo && BigInt(tx.value||'0x0')>0n){
+    return {
+      network:'Base',sourceAddress:String(tx.from||'').toLowerCase(),
+      txSender:String(tx.from||'').toLowerCase(),destinationAddress:expectedTo,
+      amount:hexToDecimalString(tx.value,18),asset:'ETH',
+      method:'BASE_NATIVE_TX',blockNumber:parseInt(tx.blockNumber||'0x0',16),
+      status:receipt.status,resolvedAt:new Date().toISOString(),rpcUrl:BASE_MAINNET_RPC
+    };
+  }
+
+  // ERC-20 Transfer(address,address,uint256) logs.
+  for(const log of receipt.logs||[]){
+    const topics=log.topics||[];
+    if(String(topics[0]||'').toLowerCase()!==ERC20_TRANSFER_TOPIC || topics.length<3)continue;
+    const to=evmTopicAddress(topics[2]);
+    if(String(to||'').toLowerCase()!==expectedTo)continue;
+    const from=evmTopicAddress(topics[1]);
+    const decimals=await baseTokenDecimals(log.address);
+    const amount=decimals==null?BigInt(log.data||'0x0').toString():hexToDecimalString(log.data,decimals);
+    return {
+      network:'Base',sourceAddress:from,txSender:String(tx.from||'').toLowerCase(),
+      destinationAddress:expectedTo,tokenContract:String(log.address||'').toLowerCase(),
+      tokenDecimals:decimals,amount,asset:row.asset||'TOKEN',
+      method:'BASE_ERC20_TRANSFER_LOG',blockNumber:parseInt(tx.blockNumber||'0x0',16),
+      status:receipt.status,resolvedAt:new Date().toISOString(),rpcUrl:BASE_MAINNET_RPC
+    };
+  }
+  throw new Error('Transaction exists on Base, but no transfer to the imported IZAKA-YA destination was found.');
+}
+async function resolveUnknownBaseSources(){
+  if(!reconciliationResults.length)throw new Error('Run reconciliation first.');
+  const targets=reconciliationResults.filter(r=>/^0x[0-9a-fA-F]{64}$/.test(String(r.txid||''))&&r.status!=='SELF_WALLET_CONFIRMED');
+  let checked=0,resolved=0,self=0,notBase=0,failed=0;
+  for(let i=0;i<targets.length;i++){
+    const r=targets[i];checked++;
+    $('baseResolveStatus').textContent='Checking Base TxID '+(i+1)+' / '+targets.length+'…';
+    try{
+      const info=await resolveBaseTxSource(r);
+      if(!info){notBase++;continue;}
+      r.onchainNetwork='Base';
+      r.onchainSourceAddress=info.sourceAddress;
+      r.onchainTxSender=info.txSender;
+      r.onchainDestinationAddress=info.destinationAddress;
+      r.onchainResolvedAmount=info.amount;
+      r.onchainTokenContract=info.tokenContract||'';
+      r.onchainTokenDecimals=info.tokenDecimals;
+      r.sourceResolutionMethod=info.method;
+      r.sourceResolvedAt=info.resolvedAt;
+      r.onchainBlock=info.blockNumber;
+      r.sourceRpc=info.rpcUrl;
+      const own=sessionScannedWallets.some(w=>w.chain==='evm'&&String(w.address).toLowerCase()===String(info.sourceAddress).toLowerCase());
+      if(own){
+        r.status='SELF_WALLET_CONFIRMED';
+        r.reason='PDF TxID resolved on Base to a source address matching an EVM wallet already confirmed in this browser session.';
+        self++;
+      }else{
+        r.status='ONCHAIN_SOURCE_RESOLVED';
+        r.reason='PDF TxID was found on Base and a transfer to the IZAKA-YA destination was verified. Source address identified; legal ownership/exchange attribution is not established.';
+      }
+      resolved++;
+    }catch(e){
+      r.baseResolutionError=e.message;
+      failed++;
+    }
+    renderReconciliation();
+  }
+  return {checked,resolved,self,notBase,failed};
+}
+
 function solanaRpcEndpoints(custom){
   return custom?[custom]:[
     'https://solana-rpc.publicnode.com',
@@ -570,7 +669,7 @@ function renderDepositSummary(){
 function renderReconciliation(){
   const rows=$('reconRows'); if(!rows)return;rows.innerHTML='';
   for(const r of reconciliationResults){const tr=document.createElement('tr');tr.innerHTML=
-    '<td>'+esc(r.recordId)+'</td><td>'+esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):r.dateRaw||'—')+'</td><td>'+esc(r.asset)+'</td><td>'+esc(r.amount)+'</td><td><span class="pill">'+esc(r.status)+'</span></td><td>'+esc(r.reason)+(r.matchedEvidenceId?'<br><code>'+esc(r.matchedEvidenceId)+'</code>':'')+(r.onchainSourceAddress?'<br>From: <code>'+esc(r.onchainSourceAddress)+'</code>':'')+(r.sourceResolutionMethod?'<br>Method: '+esc(r.sourceResolutionMethod):'')+(r.sourceResolutionError?'<br>Resolve error: '+esc(r.sourceResolutionError):'')+'</td>';rows.appendChild(tr);}
+    '<td>'+esc(r.recordId)+'</td><td>'+esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):r.dateRaw||'—')+'</td><td>'+esc(r.asset)+'</td><td>'+esc(r.amount)+'</td><td><span class="pill">'+esc(r.status)+'</span></td><td>'+esc(r.reason)+(r.matchedEvidenceId?'<br><code>'+esc(r.matchedEvidenceId)+'</code>':'')+(r.onchainSourceAddress?'<br>From: <code>'+esc(r.onchainSourceAddress)+'</code>':'')+(r.onchainNetwork?'<br>Network: '+esc(r.onchainNetwork):'')+(r.onchainTxSender&&r.onchainTxSender!==r.onchainSourceAddress?'<br>Tx sender: <code>'+esc(r.onchainTxSender)+'</code>':'')+(r.onchainTokenContract?'<br>Token contract: <code>'+esc(r.onchainTokenContract)+'</code>':'')+(r.onchainResolvedAmount?'<br>On-chain amount: '+esc(r.onchainResolvedAmount):'')+(r.sourceResolutionMethod?'<br>Method: '+esc(r.sourceResolutionMethod):'')+(r.baseResolutionError?'<br>Base resolve error: '+esc(r.baseResolutionError):'')+(r.sourceResolutionError?'<br>Resolve error: '+esc(r.sourceResolutionError):'')+'</td>';rows.appendChild(tr);}
   const counts={};for(const r of reconciliationResults)counts[r.status]=(counts[r.status]||0)+1;
   $('reconSummary').textContent=reconciliationResults.length+' record(s): '+Object.entries(counts).map(([k,v])=>k+' '+v).join(' / ');
   $('reconDetails').innerHTML=reconciliationResults.length?'<h2>Reconciliation methodology</h2><p class="muted">SELF_WALLET_CONFIRMED = TxID exact match, or unique asset/amount/time match against evidence scanned in this browser session. SOURCE_UNKNOWN = no self-wallet match found; exchange/direct-service origin remains an investigative hypothesis until supported by exchange withdrawal records or other primary evidence.</p>':'';
@@ -633,6 +732,16 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
    if(!importedLedger.length)return alert('PDFは選択されていますが、入金記録を抽出できませんでした。画面のImport statusを確認してください。');
    reconciliationResults=reconcileLedger();renderReconciliation();
  };
+ if($('resolveBaseSources')) $('resolveBaseSources').onclick=async()=>{
+   if(!reconciliationResults.length)return alert('先にReconcile imported recordsを実行してください。');
+   $('resolveBaseSources').disabled=true;
+   try{
+     const r=await resolveUnknownBaseSources();
+     $('baseResolveStatus').textContent='Base source resolution: '+r.resolved+' resolved / '+r.self+' matched confirmed wallet / '+r.notBase+' not on Base / '+r.failed+' failed / '+r.checked+' checked.';
+   }catch(e){
+     $('baseResolveStatus').textContent='Base source resolution error: '+e.message;
+   }finally{$('resolveBaseSources').disabled=false;}
+ };
  if($('resolveSolSources')) $('resolveSolSources').onclick=async()=>{
    if(!reconciliationResults.length)return alert('先にReconcile imported recordsを実行してください。');
    $('resolveSolSources').disabled=true;
@@ -649,7 +758,7 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
      sessionEvidenceCount:sessionEvidencePool.length,
      scannedWallets:sessionScannedWallets,
      source:importedSourceMeta,
-     methodology:{confirmed:'TxID exact or unique asset/amount/time match against self-wallet evidence in this browser session',sourceResolved:'SOL TxID resolved through public/custom JSON-RPC; source address identification does not establish legal ownership or exchange attribution',unknown:'No self-wallet match found; exchange/direct-service origin not proven'},
+     methodology:{confirmed:'TxID exact or unique asset/amount/time match against self-wallet evidence in this browser session',sourceResolved:'SOL TxID resolved through public/custom JSON-RPC, or Base TxID resolved through the official Base Mainnet RPC using native transaction fields / ERC-20 Transfer logs; source address identification does not establish legal ownership or exchange attribution',unknown:'No self-wallet match found; exchange/direct-service origin not proven'},
      records:reconciliationResults
    },null,2),'application/json');
  };
