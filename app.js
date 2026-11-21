@@ -165,12 +165,52 @@ function parseIzkyDepositPage(pageText,pageNumber,sourceName,pdfSha){
   }
   return rows;
 }
+function parseIzkyDepositDocument(pages,sourceName,pdfSha){
+  const joined=pages.map(p=>'[[PAGE:'+p.page+']] '+p.text.replace(/\u00a0/g,' ').replace(/\r/g,' ').replace(/\n/g,' ').replace(/[ \t]+/g,' ')).join(' ');
+  const rows=[];
+  const dateRe=/20\d{2}\/\d{2}\/\d{2}\s+\d{2}:\d{2}/g;
+  const dates=[...joined.matchAll(dateRe)];
+  for(let i=0;i<dates.length;i++){
+    const dmatch=dates[i], dateRaw=dmatch[0];
+    const segStart=dmatch.index;
+    const segEnd=i+1<dates.length?dates[i+1].index:Math.min(joined.length,segStart+1800);
+    const segment=joined.slice(segStart,segEnd);
+    if(!/を入金しました/.test(segment)) continue;
+    const amt=segment.match(/([\d,]+(?:\.\d+)?)\s+([A-Za-z0-9]+)(?:\s*\([^)]*\))?\s*を入金しました/);
+    if(!amt) continue;
+    const wallet=(segment.match(/受信Walletアドレス\s*:\s*([^\s\[]+)/)||[])[1]||'';
+    const tag=(segment.match(/受信宛先タグ\s*:\s*([^\s\[]+)/)||[])[1]||'';
+    const txRaw=(segment.match(/TxID\s*:\s*([^\s\[]+)/)||[])[1]||'';
+    const exchangeDirect=/CryptoPanda\s*で交換を行いました/.test(segment);
+    const pageMarks=[...joined.slice(0,segStart).matchAll(/\[\[PAGE:(\d+)\]\]/g)];
+    const sourcePage=Number(pageMarks.at(-1)?.[1]||1);
+    const d=new Date(dateRaw.replace(/\//g,'-').replace(' ','T')+':00+09:00');
+    const amount=String(amt[1]).replaceAll(',','');
+    const asset=normalizeIzkyAsset(amt[2]);
+    rows.push({
+      recordId:'IZKY-PDF-P'+sourcePage+'-'+String(rows.length+1).padStart(3,'0'),
+      timestamp:Number.isNaN(d.getTime())?null:Math.floor(d.getTime()/1000),
+      dateRaw,asset,amount,
+      txid:txRaw==='-'?'':txRaw,
+      destinationAddress:wallet,
+      destinationTag:tag,
+      sourceType:'PDF',
+      sourceFileName:sourceName,
+      sourcePdfSha256:pdfSha,
+      sourcePage,
+      sourceExcerpt:segment.replace(/\[\[PAGE:\d+\]\]/g,'').trim().slice(0,1600),
+      sourceRoute:exchangeDirect?'CRYPTOPANDA_EXCHANGE_RECORDED':'ONCHAIN_DEPOSIT_RECORDED',
+      raw:{page:sourcePage,text:segment.replace(/\[\[PAGE:\d+\]\]/g,'').trim()}
+    });
+  }
+  return rows;
+}
 async function parsePdfLedgerFile(file){
   const buffer=await file.arrayBuffer();
   const pdfSha=await sha256Bytes(buffer.slice(0));
   const pdfjs=await loadPdfJs();
   const doc=await pdfjs.getDocument({data:new Uint8Array(buffer)}).promise;
-  const rows=[];const pages=[];
+  const pages=[];
   for(let p=1;p<=doc.numPages;p++){
     const page=await doc.getPage(p);
     const content=await page.getTextContent();
@@ -181,11 +221,10 @@ async function parsePdfLedgerFile(file){
       text+=item.hasEOL?'\n':' ';
     }
     pages.push({page:p,text});
-    rows.push(...parseIzkyDepositPage(text,p,file.name,pdfSha));
   }
+  const rows=parseIzkyDepositDocument(pages,file.name,pdfSha);
   return {rows,meta:{sourceType:'PDF',sourceFileName:file.name,sourcePdfSha256:pdfSha,pageCount:doc.numPages,parsedRecordCount:rows.length,pagesWithText:pages.filter(x=>x.text.trim()).length}};
 }
-
 function parseCsvLine(line){
   const out=[];let cur='',q=false;
   for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}else if(c===','&&!q){out.push(cur);cur='';}else cur+=c;}out.push(cur);return out;
@@ -284,14 +323,29 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
    try{
      const file=ledgerFile.files&&ledgerFile.files[0];
      if(!file){importedLedger=[];$('reconStatus').textContent='No IZAKA-YA records loaded.';return;}
+     $('reconStatus').textContent='Reading '+file.name+' locally…';
      importedLedger=await parseLedgerFile(file);
-     $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) loaded locally from '+(importedSourceMeta?.sourceType||'file')+'. Nothing uploaded to a server.'+
+     $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) extracted locally from '+(importedSourceMeta?.sourceType||'file')+'. Nothing uploaded to a server.'+
        (importedSourceMeta?.sourcePdfSha256?' PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'')+
        (importedLedger.length===0?' No deposit records were extracted. This PDF may not be an IZAKA-YA deposit-history PDF or its text layout may be unsupported.':'');
    }catch(e){importedLedger=[];$('reconStatus').textContent='Import error: '+e.message;}
  });
- if($('reconcile')) $('reconcile').onclick=()=>{
-   if(!importedLedger.length)return alert('IZAKA-YAのPDF / CSV / JSONを先に読み込んでください。読み込み後、抽出件数が0件の場合はPDF形式を確認してください。');
+ if($('reconcile')) $('reconcile').onclick=async()=>{
+   if(!importedLedger.length){
+     const file=$('ledgerFile')?.files?.[0];
+     if(file){
+       $('reconStatus').textContent='Reading '+file.name+' locally…';
+       try{
+         importedLedger=await parseLedgerFile(file);
+         $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) extracted locally from '+(importedSourceMeta?.sourceType||'file')+'.'+
+           (importedSourceMeta?.sourcePdfSha256?' PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'');
+       }catch(e){
+         $('reconStatus').textContent='PDF import error: '+e.message;
+         return alert('PDFの読み取りに失敗しました: '+e.message);
+       }
+     }
+   }
+   if(!importedLedger.length)return alert('PDFは選択されていますが、入金記録を抽出できませんでした。画面のImport statusを確認してください。');
    reconciliationResults=reconcileLedger();renderReconciliation();
  };
  if($('exportRecon')) $('exportRecon').onclick=()=>{
