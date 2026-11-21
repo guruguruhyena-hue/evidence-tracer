@@ -1,9 +1,9 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><title>Transaction From Verifier — Evidence Tracer</title><link rel="stylesheet" href="./src/style.css"><link rel="stylesheet" href="./src/report.css"></head><body><main class="wrap">
 <nav class="report-nav"><a href="./index.html">← Evidence Tracer</a>　|　<a href="./report.html">提出用資料</a></nav>
-<header class="hero"><span class="badge">PUBLIC BLOCKCHAIN · READ-ONLY</span><h1>Transaction From Verifier</h1><p class="muted">Verifier build: <strong>2026-11-22 / OP fallback 3</strong></p><p>取引ハッシュから実際の送信元を調べる（Base / Optimism）</p></header>
+<header class="hero"><span class="badge">PUBLIC BLOCKCHAIN · READ-ONLY</span><h1>Transaction From Verifier</h1><p class="muted">Verifier build: <strong>2026-11-22 / ETH support 1</strong></p><p>取引ハッシュから実際の送信元を調べる（Ethereum / Base / Optimism）</p></header>
 <section class="card no-print"><h2>01 · 検証対象を入力</h2>
 <p>TxIDをブラウザから直接Blockscoutへ照会します。本人の事件情報は初期登録されていません。</p>
-<div class="grid"><div><label for="verifyNetwork">Network</label><select id="verifyNetwork"><option value="8453">Base</option><option value="10">Optimism</option></select></div>
+<div class="grid"><div><label for="verifyNetwork">Network</label><select id="verifyNetwork"><option value="1">Ethereum Mainnet</option><option value="8453">Base</option><option value="10">Optimism</option></select></div>
 <div><label for="verifyHash">Hash in（0x + 64桁）</label><input id="verifyHash" autocomplete="off" spellcheck="false" placeholder="0x..."></div></div>
 <div style="margin-top:12px"><label for="verifyRpc">Custom RPC URL（任意・専用RPCがある場合）</label><input id="verifyRpc" type="url" autocomplete="off" spellcheck="false" placeholder="https://your-rpc-provider.example/rpc"><p class="muted">公開RPCにアクセスできない場合のみ入力してください。HTTPS URLを使用します。APIキー付きURLは共有・公開しないでください。</p></div><div class="actions"><button class="primary" id="verifyButton">送信者を検証</button><button id="verifyExport" disabled>結果をJSONで保存</button></div>
 <p id="verifyStatus" class="operation-status" role="status">TxIDを入力してください。</p>
@@ -15,4 +15,4 @@
 <p class="muted">Transaction Fromと、Token Transfer Fromは同一とは限りません。RPC経由の数量はトークンdecimals未取得のraw整数単位で表示されます。対象の資産・数量・受取先が一致するか、必ず確認してください。</p>
 <div class="results"><table><thead><tr><th>Token</th><th>Amount</th><th>Transfer From</th><th>Transfer To</th><th>Contract</th></tr></thead><tbody id="verifyTransfers"></tbody></table></div></section>
 <section class="card"><h2>04 · 注意事項</h2><p>アドレスが表示されても、そのアドレスの法的所有者は確定しません。成功したトランザクションに該当ERC-20 Transferが存在することを、エクスプローラー上でも再確認してください。</p></section></main>
-<script src="./tx-verify.js?v=20261122-op-fallback-3" defer></script></body></html>
+<script src="./tx-verify.js?v=20261122-eth-1" defer></script></body></html>
