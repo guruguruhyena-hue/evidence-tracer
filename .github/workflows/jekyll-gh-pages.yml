@@ -32,6 +32,8 @@ jobs:
         run: npm run syntax:test && node --check report.js
       - name: Reconciliation regression tests
         run: npm run reconciliation:test
+      - name: Police report validation tests
+        run: npm run report:test
       - name: Privacy checks
         run: npm run privacy:test
       - name: Setup Pages
