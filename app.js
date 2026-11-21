@@ -496,6 +496,70 @@ function reconcileLedger(){
     return {...row,status:'SOURCE_UNKNOWN',reason:'No matching transfer was found in the self-wallet evidence scanned in this browser session. This does not by itself prove an exchange/direct-service origin.'};
   });
 }
+function chainBucketForAsset(asset){
+  const a=String(asset||'').toUpperCase();
+  if(['BTC'].includes(a)) return 'Bitcoin';
+  if(['SOL'].includes(a)) return 'Solana';
+  if(['XRP'].includes(a)) return 'XRP Ledger';
+  if(['ETH','USDT','USDC','SHIB','OP','IZKY','AKC','BNB','POL','MATIC','AVAX','HYPE'].includes(a)) return 'EVM / Token';
+  return 'Other';
+}
+function addDecimalStrings(values){
+  let max=0;
+  const parts=values.map(v=>{
+    const str=String(v??'0').replace(/,/g,'').trim();
+    const neg=str.startsWith('-');
+    const clean=neg?str.slice(1):str;
+    const [i='0',f='']=clean.split('.');
+    max=Math.max(max,f.length);
+    return {neg,i:i||'0',f};
+  });
+  let total=0n;
+  for(const p of parts){
+    const n=BigInt((p.i+p.f.padEnd(max,'0')).replace(/^0+(?=\d)/,'')||'0');
+    total+=p.neg?-n:n;
+  }
+  const neg=total<0n;if(neg)total=-total;
+  let str=total.toString().padStart(max+1,'0');
+  if(max){
+    str=str.slice(0,-max)+'.'+str.slice(-max);
+    str=str.replace(/\.0+$/,'').replace(/(\.\d*?)0+$/,'$1');
+  }
+  return (neg?'-':'')+str;
+}
+function buildDepositSummary(){
+  const rows=reconciliationResults.length?reconciliationResults:importedLedger;
+  const map=new Map();
+  for(const r of rows){
+    const chain=chainBucketForAsset(r.asset);
+    const key=chain+'|'+String(r.asset||'').toUpperCase();
+    if(!map.has(key)) map.set(key,{chain,asset:String(r.asset||'').toUpperCase(),count:0,amounts:[],confirmed:0,sourceResolved:0,unknown:0,internalExchange:0,noTxid:0});
+    const x=map.get(key);x.count++;x.amounts.push(r.amount||'0');
+    if(r.status==='SELF_WALLET_CONFIRMED')x.confirmed++;
+    if(r.status==='ONCHAIN_SOURCE_RESOLVED')x.sourceResolved++;
+    if(r.status==='SOURCE_UNKNOWN')x.unknown++;
+    if(r.sourceRoute==='CRYPTOPANDA_EXCHANGE_RECORDED')x.internalExchange++;
+    if(!r.txid)x.noTxid++;
+  }
+  return [...map.values()].map(x=>({...x,total:addDecimalStrings(x.amounts)}))
+    .sort((a,b)=>a.chain.localeCompare(b.chain)||a.asset.localeCompare(b.asset));
+}
+function renderDepositSummary(){
+  const body=$('depositSummaryRows'),meta=$('depositSummaryMeta');
+  if(!body||!meta)return;
+  body.innerHTML='';
+  const summary=buildDepositSummary();
+  for(const x of summary){
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td>'+esc(x.chain)+'</td><td>'+esc(x.asset)+'</td><td>'+x.count+'</td><td><code>'+esc(x.total)+'</code></td><td>'+x.confirmed+'</td><td>'+x.sourceResolved+'</td><td>'+x.unknown+'</td><td>'+x.internalExchange+'</td><td>'+x.noTxid+'</td>';
+    body.appendChild(tr);
+  }
+  const totalRecords=(reconciliationResults.length?reconciliationResults:importedLedger).length;
+  const confirmed=summary.reduce((n,x)=>n+x.confirmed,0);
+  const resolved=summary.reduce((n,x)=>n+x.sourceResolved,0);
+  const unknown=summary.reduce((n,x)=>n+x.unknown,0);
+  meta.textContent=totalRecords?('Total records '+totalRecords+' · Self-wallet confirmed '+confirmed+' · On-chain source resolved '+resolved+' · Source unknown '+unknown):'No deposit records loaded.';
+}
 function renderReconciliation(){
   const rows=$('reconRows'); if(!rows)return;rows.innerHTML='';
   for(const r of reconciliationResults){const tr=document.createElement('tr');tr.innerHTML=
@@ -503,6 +567,7 @@ function renderReconciliation(){
   const counts={};for(const r of reconciliationResults)counts[r.status]=(counts[r.status]||0)+1;
   $('reconSummary').textContent=reconciliationResults.length+' record(s): '+Object.entries(counts).map(([k,v])=>k+' '+v).join(' / ');
   $('reconDetails').innerHTML=reconciliationResults.length?'<h2>Reconciliation methodology</h2><p class="muted">SELF_WALLET_CONFIRMED = TxID exact match, or unique asset/amount/time match against evidence scanned in this browser session. SOURCE_UNKNOWN = no self-wallet match found; exchange/direct-service origin remains an investigative hypothesis until supported by exchange withdrawal records or other primary evidence.</p>':'';
+  renderDepositSummary();
 }
 
 function render(){const rows=$('rows');rows.innerHTML='';for(const r of matches){const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):'—')}</td><td>${esc(r.network)}</td><td>${esc(r.asset)}</td><td>${esc(r.amount)}</td><td><code>${esc(r.to)}</code></td><td><code>${esc(r.txid)}</code></td><td>${esc(r.classification)}</td><td>${esc((r.evidenceRefs||[]).join(', '))}</td>`;rows.appendChild(tr);}$('summary').textContent=matches.length+' matched transfer(s).';renderReportMeta();renderEvidenceDetails();}
@@ -535,6 +600,7 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
         ' | TxID: '+String(importedSourceMeta?.containsTxId??false)+
         ' | Wallet label: '+String(importedSourceMeta?.containsWallet??false):'')+
        ' | Nothing uploaded to a server.';
+     renderDepositSummary();
    }catch(e){importedLedger=[];$('reconStatus').textContent='Import error: '+e.message;}
  });
  if($('reconcile')) $('reconcile').onclick=async()=>{
@@ -581,6 +647,6 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
    },null,2),'application/json');
  };
 
- $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];sessionScannedWallets=[];importedLedger=[];reconciliationResults=[];importedSourceMeta=null;$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
+ $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];sessionScannedWallets=[];importedLedger=[];reconciliationResults=[];importedSourceMeta=null;$('addr').value='';$('key').value='';$('rpc').value='';render();renderDepositSummary();$('status').textContent='Cleared from page memory.';};
 }
 window.addEventListener('DOMContentLoaded',()=>{try{init();document.body.dataset.appReady='true';}catch(e){document.getElementById('boot-error').textContent='Application error: '+e.message;document.getElementById('boot-error').style.display='block';}});
