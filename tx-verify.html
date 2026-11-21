@@ -5,13 +5,13 @@
 <p>TxIDをブラウザから直接Blockscoutへ照会します。本人の事件情報は初期登録されていません。</p>
 <div class="grid"><div><label for="verifyNetwork">Network</label><select id="verifyNetwork"><option value="8453">Base</option><option value="10">Optimism</option></select></div>
 <div><label for="verifyHash">Hash in（0x + 64桁）</label><input id="verifyHash" autocomplete="off" spellcheck="false" placeholder="0x..."></div></div>
-<div class="actions"><button class="primary" id="verifyButton">送信者を検証</button><button id="verifyExport" disabled>結果をJSONで保存</button></div>
+<div style="margin-top:12px"><label for="verifyRpc">Custom RPC URL（任意・専用RPCがある場合）</label><input id="verifyRpc" type="url" autocomplete="off" spellcheck="false" placeholder="https://your-rpc-provider.example/rpc"><p class="muted">公開RPCにアクセスできない場合のみ入力してください。HTTPS URLを使用します。APIキー付きURLは共有・公開しないでください。</p></div><div class="actions"><button class="primary" id="verifyButton">送信者を検証</button><button id="verifyExport" disabled>結果をJSONで保存</button></div>
 <p id="verifyStatus" class="operation-status" role="status">TxIDを入力してください。</p>
 <p class="muted">外部APIへ送るのは入力したTxIDとチェーンIDです。IPアドレスなどのアクセス情報がAPI事業者に記録される場合があります。ウォレットの秘密鍵は不要です。</p>
 </section>
 <section class="card"><h2>02 · Transaction Details / 実行元</h2><div id="verifyTx" class="explain">照会前です。</div>
 <h2>03 · ERC-20 Token Transfers / 実際のトークン移動</h2>
-<p class="muted">Transaction Fromと、Token Transfer Fromは同一とは限りません。対象の資産・数量・受取先が一致するか、必ず確認してください。</p>
+<p class="muted">Transaction Fromと、Token Transfer Fromは同一とは限りません。RPC経由の数量はトークンdecimals未取得のraw整数単位で表示されます。対象の資産・数量・受取先が一致するか、必ず確認してください。</p>
 <div class="results"><table><thead><tr><th>Token</th><th>Amount</th><th>Transfer From</th><th>Transfer To</th><th>Contract</th></tr></thead><tbody id="verifyTransfers"></tbody></table></div></section>
 <section class="card"><h2>04 · 注意事項</h2><p>アドレスが表示されても、そのアドレスの法的所有者は確定しません。成功したトランザクションに該当ERC-20 Transferが存在することを、エクスプローラー上でも再確認してください。</p></section></main>
 <script src="./tx-verify.js" defer></script></body></html>
