@@ -2,6 +2,9 @@
 const EVM_CHAINS=[
 {name:'Ethereum',chainId:'1',symbol:'ETH'},{name:'BNB Smart Chain',chainId:'56',symbol:'BNB'},{name:'Polygon',chainId:'137',symbol:'POL'},{name:'Arbitrum One',chainId:'42161',symbol:'ETH'},{name:'OP Mainnet',chainId:'10',symbol:'ETH'},{name:'Base',chainId:'8453',symbol:'ETH'},{name:'Avalanche C-Chain',chainId:'43114',symbol:'AVAX'},{name:'Linea',chainId:'59144',symbol:'ETH'},{name:'Scroll',chainId:'534352',symbol:'ETH'},{name:'zkSync Era',chainId:'324',symbol:'ETH'},{name:'HyperEVM',chainId:'999',symbol:'HYPE'},{name:'opBNB',chainId:'204',symbol:'BNB'}];
 let matches=[],lastMeta={};
+let sessionEvidencePool=[];
+let importedLedger=[];
+let reconciliationResults=[];
 let scanRetrievedAt=null;
 const knownProfile={
  caseProfile:'IZAKA-YA',version:'2026-11-22.1',
@@ -103,10 +106,89 @@ function renderEvidenceDetails(){
     '</dl></article>').join('');
 }
 
+
+function addToSessionPool(records){
+  const key=r=>[r.chain,r.txid,r.to,r.asset,r.amount].join('|');
+  const existing=new Set(sessionEvidencePool.map(key));
+  for(const r of records){const k=key(r);if(!existing.has(k)){sessionEvidencePool.push(r);existing.add(k);}}
+}
+function parseCsvLine(line){
+  const out=[];let cur='',q=false;
+  for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}else if(c===','&&!q){out.push(cur);cur='';}else cur+=c;}out.push(cur);return out;
+}
+function normalizeLedgerRow(row,index){
+  const obj={};for(const [k,v] of Object.entries(row||{}))obj[String(k).trim().toLowerCase()]=v;
+  const dateRaw=obj.timestamp??obj.datetime??obj['date/time']??obj.date??obj.time??'';
+  let ts=null;
+  if(typeof dateRaw==='number')ts=dateRaw>1e12?Math.floor(dateRaw/1000):Math.floor(dateRaw);
+  else if(String(dateRaw).trim()){const d=new Date(String(dateRaw).trim());if(!Number.isNaN(d.getTime()))ts=Math.floor(d.getTime()/1000);}
+  return {
+    recordId:String(obj.id??obj.record_id??obj['record id']??('IZKY-ROW-'+String(index+1).padStart(4,'0'))),
+    timestamp:ts,
+    dateRaw:String(dateRaw??''),
+    asset:String(obj.asset??obj.currency??obj.coin??obj.token??'').trim().toUpperCase(),
+    amount:String(obj.amount??obj.quantity??obj.value??'').trim(),
+    txid:String(obj.txid??obj.tx_hash??obj.hash??obj.transaction_hash??'').trim(),
+    raw:row
+  };
+}
+async function parseLedgerFile(file){
+  const text=await file.text();
+  if(file.name.toLowerCase().endsWith('.json')||text.trim().startsWith('[')||text.trim().startsWith('{')){
+    const parsed=JSON.parse(text);const rows=Array.isArray(parsed)?parsed:(parsed.records||parsed.transactions||parsed.data||[]);
+    if(!Array.isArray(rows))throw new Error('JSON内の取引配列を認識できません。');
+    return rows.map(normalizeLedgerRow);
+  }
+  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim());
+  if(lines.length<2)return [];
+  const headers=parseCsvLine(lines[0]).map(h=>h.trim());
+  return lines.slice(1).map((line,i)=>{const vals=parseCsvLine(line),row={};headers.forEach((h,j)=>row[h]=vals[j]??'');return normalizeLedgerRow(row,i);});
+}
+function amountClose(a,b){
+  try{
+    const x=Number(a),y=Number(b);
+    if(!Number.isFinite(x)||!Number.isFinite(y))return String(a)===String(b);
+    const tol=Math.max(1e-10,Math.abs(y)*1e-8);
+    return Math.abs(x-y)<=tol;
+  }catch{return String(a)===String(b);}
+}
+function assetEquivalent(a,b){
+  const x=String(a||'').toUpperCase(),y=String(b||'').toUpperCase();
+  if(x===y)return true;
+  const aliases={WETH:'ETH',WBTC:'BTC',POL:'MATIC',MATIC:'POL'};
+  return aliases[x]===y||aliases[y]===x;
+}
+function reconcileLedger(){
+  const tolMin=Number($('timeTolerance').value)||0,tol=tolMin*60;
+  return importedLedger.map(row=>{
+    let candidate=null,method='none';
+    if(row.txid){
+      candidate=sessionEvidencePool.find(r=>String(r.txid).toLowerCase()===row.txid.toLowerCase());
+      if(candidate)method='txid_exact';
+    }
+    if(!candidate){
+      const possible=sessionEvidencePool.filter(r=>assetEquivalent(row.asset,r.asset)&&amountClose(row.amount,r.amount)&&
+        (row.timestamp==null||r.timestamp==null||Math.abs(row.timestamp-r.timestamp)<=tol));
+      if(possible.length===1){candidate=possible[0];method='asset_amount_time';}
+      else if(possible.length>1){return {...row,status:'AMBIGUOUS_MATCH',reason:possible.length+' candidate on-chain transfers match asset/amount/time window.',candidates:possible.map(x=>x.evidenceId)};}
+    }
+    if(candidate)return {...row,status:'SELF_WALLET_CONFIRMED',reason:method==='txid_exact'?'IZAKA-YA record TxID exactly matches a confirmed self-wallet transfer.':'Asset, amount and time match one confirmed self-wallet transfer within tolerance.',matchedEvidenceId:candidate.evidenceId,matchedTxid:candidate.txid,matchedFrom:candidate.from,matchedTo:candidate.to};
+    return {...row,status:'SOURCE_UNKNOWN',reason:'No matching transfer was found in the self-wallet evidence scanned in this browser session. This does not by itself prove an exchange/direct-service origin.'};
+  });
+}
+function renderReconciliation(){
+  const rows=$('reconRows'); if(!rows)return;rows.innerHTML='';
+  for(const r of reconciliationResults){const tr=document.createElement('tr');tr.innerHTML=
+    '<td>'+esc(r.recordId)+'</td><td>'+esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):r.dateRaw||'—')+'</td><td>'+esc(r.asset)+'</td><td>'+esc(r.amount)+'</td><td><span class="pill">'+esc(r.status)+'</span></td><td>'+esc(r.reason)+(r.matchedEvidenceId?'<br><code>'+esc(r.matchedEvidenceId)+'</code>':'')+'</td>';rows.appendChild(tr);}
+  const counts={};for(const r of reconciliationResults)counts[r.status]=(counts[r.status]||0)+1;
+  $('reconSummary').textContent=reconciliationResults.length+' record(s): '+Object.entries(counts).map(([k,v])=>k+' '+v).join(' / ');
+  $('reconDetails').innerHTML=reconciliationResults.length?'<h2>Reconciliation methodology</h2><p class="muted">SELF_WALLET_CONFIRMED = TxID exact match, or unique asset/amount/time match against evidence scanned in this browser session. SOURCE_UNKNOWN = no self-wallet match found; exchange/direct-service origin remains an investigative hypothesis until supported by exchange withdrawal records or other primary evidence.</p>':'';
+}
+
 function render(){const rows=$('rows');rows.innerHTML='';for(const r of matches){const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):'—')}</td><td>${esc(r.network)}</td><td>${esc(r.asset)}</td><td>${esc(r.amount)}</td><td><code>${esc(r.to)}</code></td><td><code>${esc(r.txid)}</code></td><td>${esc(r.classification)}</td><td>${esc((r.evidenceRefs||[]).join(', '))}</td>`;rows.appendChild(tr);}$('summary').textContent=matches.length+' matched transfer(s).';renderReportMeta();renderEvidenceDetails();}
 function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.chainId}">${c.name}</option>`).join('');
  const update=()=>{const k=$('kind').value;$('networkWrap').style.display='block';$('network').disabled=k!=='evm';$('networkWrap').style.opacity=k==='evm'?'1':'0.55';$('keyWrap').style.display=k==='evm'?'block':'none';$('rpcWrap').style.display=(k==='sol'||k==='xrp')?'block':'none';};$('kind').addEventListener('change',update);update();
- $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);scanRetrievedAt=new Date().toISOString();matches=matchTransfers(rec);matches=await enrichEvidenceRecords(matches);const c=EVM_CHAINS.find(x=>x.chainId===req.network);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile)),retrievedAt:scanRetrievedAt,networkName:($('kind').value==='evm'&&c)?c.name:($('kind').value==='btc'?'Bitcoin':$('kind').value==='sol'?'Solana':'XRP Ledger')};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
+ $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);scanRetrievedAt=new Date().toISOString();matches=matchTransfers(rec);matches=await enrichEvidenceRecords(matches);addToSessionPool(matches);const c=EVM_CHAINS.find(x=>x.chainId===req.network);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile)),retrievedAt:scanRetrievedAt,networkName:($('kind').value==='evm'&&c)?c.name:($('kind').value==='btc'?'Bitcoin':$('kind').value==='sol'?'Solana':'XRP Ledger')};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
  $('json').onclick=()=>download(exportBaseName()+'.json',JSON.stringify({meta:lastMeta,records:matches},null,2),'application/json');
  $('print').onclick=()=>{
   const oldTitle=document.title;
@@ -116,6 +198,29 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
   window.print();
   setTimeout(()=>{ if(document.title!==oldTitle) document.title=oldTitle; },1500);
 };
- $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
+
+ const ledgerFile=$('ledgerFile');
+ if(ledgerFile) ledgerFile.addEventListener('change',async()=>{
+   try{
+     const file=ledgerFile.files&&ledgerFile.files[0];
+     if(!file){importedLedger=[];$('reconStatus').textContent='No IZAKA-YA records loaded.';return;}
+     importedLedger=await parseLedgerFile(file);
+     $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) loaded locally. Nothing uploaded to a server.';
+   }catch(e){importedLedger=[];$('reconStatus').textContent='Import error: '+e.message;}
+ });
+ if($('reconcile')) $('reconcile').onclick=()=>{
+   if(!importedLedger.length)return alert('IZAKA-YAのCSVまたはJSONを先に読み込んでください。');
+   reconciliationResults=reconcileLedger();renderReconciliation();
+ };
+ if($('exportRecon')) $('exportRecon').onclick=()=>{
+   download('EvidenceTracer-Reconciliation-'+exportChainLabel()+'.json',JSON.stringify({
+     generatedAt:new Date().toISOString(),
+     sessionEvidenceCount:sessionEvidencePool.length,
+     methodology:{confirmed:'TxID exact or unique asset/amount/time match against self-wallet evidence in this browser session',unknown:'No self-wallet match found; exchange/direct-service origin not proven'},
+     records:reconciliationResults
+   },null,2),'application/json');
+ };
+
+ $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];importedLedger=[];reconciliationResults=[];$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
 }
 window.addEventListener('DOMContentLoaded',()=>{try{init();document.body.dataset.appReady='true';}catch(e){document.getElementById('boot-error').textContent='Application error: '+e.message;document.getElementById('boot-error').style.display='block';}});
