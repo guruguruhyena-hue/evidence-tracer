@@ -7,6 +7,7 @@
 <div><label for="verifyHash">Hash in（0x + 64桁）</label><input id="verifyHash" autocomplete="off" spellcheck="false" placeholder="0x..."></div></div>
 <div style="margin-top:12px"><label for="verifyRpc">Custom RPC URL（任意・専用RPCがある場合）</label><input id="verifyRpc" type="url" autocomplete="off" spellcheck="false" placeholder="https://your-rpc-provider.example/rpc"><p class="muted">公開RPCにアクセスできない場合のみ入力してください。HTTPS URLを使用します。APIキー付きURLは共有・公開しないでください。</p></div><div class="actions"><button class="primary" id="verifyButton">送信者を検証</button><button id="verifyExport" disabled>結果をJSONで保存</button></div>
 <p id="verifyStatus" class="operation-status" role="status">TxIDを入力してください。</p>
+<p class="muted">Optimismで取得できないときは、<a href="https://explorer.optimism.io/" target="_blank" rel="noopener noreferrer">OP Mainnet公式エクスプローラー</a> でTxIDを直接検索できます。取得不可は取引不存在の証明ではありません。</p>
 <p class="muted">外部APIへ送るのは入力したTxIDとチェーンIDです。IPアドレスなどのアクセス情報がAPI事業者に記録される場合があります。ウォレットの秘密鍵は不要です。</p>
 </section>
 <section class="card"><h2>02 · Transaction Details / 実行元</h2><div id="verifyTx" class="explain">照会前です。</div>
