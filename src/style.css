@@ -22,3 +22,69 @@
 .summary-table th{white-space:nowrap}
 
 #traceCacheStatus{margin-top:10px}
+
+/* Readability and scanning improvements — v0.7.1 */
+:root{font-size:15px;line-height:1.65}
+.wrap{max-width:1280px;padding:clamp(14px,3vw,36px)}
+.hero{padding:clamp(22px,3vw,38px)}
+.hero p{max-width:76ch;line-height:1.7;margin-bottom:0}
+.card{padding:clamp(18px,2.4vw,28px);margin-top:20px}
+.card h2{font-size:clamp(17px,1.6vw,21px);line-height:1.5;margin:0 0 14px;letter-spacing:-.015em}
+.card h2 + .muted,.section-intro{margin-top:0}
+.card p{line-height:1.8;overflow-wrap:anywhere}
+.muted{font-size:13px;line-height:1.75}
+.explain{display:grid;gap:5px;margin:12px 0 18px;max-width:94ch;color:#455164;font-size:14px}
+.explain p{margin:0;line-height:1.8}
+.explain p+p{margin-top:3px}
+.explain strong{color:#253142}
+.explain-secondary{padding:14px 16px;border-radius:12px;background:#f7f8fa;border:1px solid #e7eaf0}
+.sentence-break{display:block}
+.grid{gap:18px}
+.grid>div{min-width:0}
+label{display:block;font-size:12px;margin-bottom:6px}
+input,select,button{font-size:14px;line-height:1.5}
+input,select{min-height:43px}
+.actions{gap:10px;margin:16px 0 12px}
+.actions button{min-height:40px;max-width:100%}
+button{transition:background .15s ease,border-color .15s ease}
+button:hover{border-color:#7b8798;background:#f6f8fb}
+button.primary:hover{background:#26354c;color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #91b9fd;outline-offset:2px}
+.workflow{padding:15px 17px;margin:16px 0;background:#edf4ff;border:1px solid #d5e5ff;border-radius:12px;color:#263b62}
+.workflow strong{display:block;margin-bottom:8px;font-size:13px}
+.workflow-steps{display:flex;flex-wrap:wrap;gap:8px}
+.workflow-steps span{background:#fff;border:1px solid #dce7f5;border-radius:8px;padding:5px 10px;font-size:12px}
+.operation-status{padding:10px 12px;margin:9px 0;border-radius:9px;border-left:3px solid #a3adbd;background:#f7f8fa;white-space:pre-line;overflow-wrap:anywhere}
+.results{overflow-x:auto;border:1px solid #e2e6ec;border-radius:12px;margin-top:12px}
+table{font-size:12px;line-height:1.65}
+th,td{padding:12px 14px;border-bottom:1px solid #e8ecf0}
+th{font-weight:700;background:#f7f9fb;color:#42506a;position:sticky;top:0;z-index:1}
+tbody tr:nth-child(even){background:#fbfcfd}
+tbody tr:hover{background:#f3f7ff}
+td code{overflow-wrap:anywhere;word-break:break-all}
+#reconRows td:last-child{min-width:260px;max-width:560px}
+.recon-reason{line-height:1.8;white-space:pre-line}
+.recon-fact{margin-top:9px;padding-top:9px;border-top:1px dashed #dce2ea;color:#3c4960}
+.recon-fact code{display:inline-block;font-size:11px}
+.recon-error{margin-top:8px;color:#a34a25;white-space:pre-wrap;overflow-wrap:anywhere}
+.pill{display:inline-block;line-height:1.5;font-weight:700;white-space:normal}
+.pill[data-status="SELF_WALLET_CONFIRMED"]{background:#d9f4e7;color:#176743}
+.pill[data-status="SOURCE_UNKNOWN"]{background:#fef4d9;color:#825d15}
+.pill[data-status="UNRESOLVED"],.pill[data-status="AMBIGUOUS_MATCH"]{background:#ffe9e5;color:#963f34}
+#reconDetails{border-top:1px solid #e5e9ef;padding-top:18px;margin-top:22px}
+#reconDetails p{max-width:94ch}
+@media(max-width:760px){
+ .card{margin-top:14px}
+ .actions button{width:100%}
+ .workflow-steps{flex-direction:column}
+ .workflow-steps span{width:100%}
+ table{font-size:11px}
+ th,td{padding:10px}
+ .meta-grid,.evidence-grid{grid-template-columns:1fr}
+}
+@media print{
+ .card{margin-top:10px;padding:8px}
+ .operation-status,.workflow{display:none}
+ .results{border:none;overflow:visible}
+ th{position:static}
+}
