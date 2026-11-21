@@ -31,8 +31,9 @@ async function rpc(url,method,params){const r=await fetch(url,{method:'POST',hea
 }const j=await r.json();if(j.error)throw new Error(j.error.message);return j.result;}
 async function scanSolana(req){
   const endpoints=req.rpcUrl?[req.rpcUrl]:[
-    'https://api.mainnet.solana.com',
-    'https://rpc.ankr.com/solana'
+    'https://solana-rpc.publicnode.com',
+    'https://public-solana-mainnet.rpcnode.dev',
+    'https://api.mainnet.solana.com'
   ];
   let lastErr=null;
   for(const url of endpoints){
@@ -55,7 +56,7 @@ async function scanSolana(req){
       if(req.rpcUrl) break;
     }
   }
-  throw new Error((lastErr?.message||'Solana RPC failed')+' — Public RPC access may be blocked or rate-limited. Try a Custom RPC URL.');
+  throw new Error((lastErr?.message||'Solana RPC failed')+' — All public Solana RPC fallbacks failed or were rate-limited. Try a Custom RPC URL.');
 }
 async function scanXrp(req){const url=req.rpcUrl||'https://xrplcluster.com/';const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'account_tx',params:[{account:req.address,ledger_index_min:-1,ledger_index_max:-1,binary:false,limit:req.maxRecords||200,forward:false}]})});if(!r.ok)throw new Error('XRPL HTTP '+r.status);const j=await r.json(),out=[];for(const e of j.result?.transactions||[]){const t=e.tx_json||e.tx||e;if(t.TransactionType!=='Payment'||t.Account!==req.address||!t.Destination)continue;out.push({chain:'xrp',network:'XRP Ledger',txid:t.hash||e.hash||'',timestamp:typeof t.date==='number'?t.date+946684800:null,from:t.Account,to:t.Destination,asset:typeof t.Amount==='string'?'XRP':(t.Amount?.currency||'ISSUED'),amount:typeof t.Amount==='string'?units(t.Amount,6):String(t.Amount?.value||''),status:'validated',raw:e});}return out;}
 async function sha256(text){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');}
