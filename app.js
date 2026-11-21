@@ -118,9 +118,10 @@ async function resolveBaseTxSource(row){
   if(!tx) return null; // Tx is not on Base.
   const receipt=await rpc(BASE_MAINNET_RPC,'eth_getTransactionReceipt',[row.txid]);
   if(!receipt)throw new Error('Base receipt not found.');
+  if(receipt.status!=='0x1')throw new Error('Base transaction receipt is not successful.');
 
   // Native ETH transfer directly to the IZAKA-YA deposit address.
-  if(String(tx.to||'').toLowerCase()===expectedTo && BigInt(tx.value||'0x0')>0n){
+  if(String(tx.to||'').toLowerCase()===expectedTo && BigInt(tx.value||'0x0')>0n && String(row.asset||'').toUpperCase()==='ETH' && amountClose(hexToDecimalString(tx.value,18),row.amount)){
     return {
       network:'Base',sourceAddress:String(tx.from||'').toLowerCase(),
       txSender:String(tx.from||'').toLowerCase(),destinationAddress:expectedTo,
@@ -138,12 +139,19 @@ async function resolveBaseTxSource(row){
     if(String(to||'').toLowerCase()!==expectedTo)continue;
     const from=evmTopicAddress(topics[1]);
     const decimals=await baseTokenDecimals(log.address);
-    const amount=decimals==null?BigInt(log.data||'0x0').toString():hexToDecimalString(log.data,decimals);
+    if(decimals==null||!Number.isInteger(decimals)||decimals<0||decimals>36)throw new Error('Cannot verify token decimals for Base Transfer log.');
+    const amount=hexToDecimalString(log.data,decimals);
+    if(!amountClose(amount,row.amount))continue;
+    const symbolHex=await rpc(BASE_MAINNET_RPC,'eth_call',[{to:log.address,data:'0x95d89b41'},'latest']).catch(()=>null);
+    let tokenSymbol='';
+    if(symbolHex){try{const bytes=String(symbolHex).slice(2);const n=Number.parseInt(bytes.slice(64,128),16);const off=Number.parseInt(bytes.slice(0,64),16)*2;tokenSymbol=decodeURIComponent(bytes.slice(off+64,off+64+n*2).replace(/../g,'%const amount=decimals==null?BigInt(log.data||'0x0').toString():hexToDecimalString(log.data,decimals);
+    return {')).replace(/\0/g,'');}catch{}}
+    if(tokenSymbol&&tokenSymbol.toUpperCase()!==String(row.asset||'').toUpperCase())continue;
     return {
       network:'Base',sourceAddress:from,txSender:String(tx.from||'').toLowerCase(),
       destinationAddress:expectedTo,tokenContract:String(log.address||'').toLowerCase(),
-      tokenDecimals:decimals,amount,asset:row.asset||'TOKEN',
-      method:'BASE_ERC20_TRANSFER_LOG',blockNumber:parseInt(tx.blockNumber||'0x0',16),
+      tokenDecimals:decimals,amount,asset:row.asset||'TOKEN',tokenSymbol:tokenSymbol||null,
+      method:tokenSymbol?'BASE_ERC20_TRANSFER_LOG':'BASE_ERC20_TRANSFER_LOG_SYMBOL_UNVERIFIED',blockNumber:parseInt(tx.blockNumber||'0x0',16),
       status:receipt.status,resolvedAt:new Date().toISOString(),rpcUrl:BASE_MAINNET_RPC
     };
   }
@@ -167,10 +175,12 @@ async function resolveUnknownBaseSources(){
       r.onchainTokenContract=info.tokenContract||'';
       r.onchainTokenDecimals=info.tokenDecimals;
       r.sourceResolutionMethod=info.method;
+      r.sourceResolutionConfidence=info.ambiguous?'AMBIGUOUS':'PARSED_TRANSFER';
+      delete r.sourceResolutionError;
       r.sourceResolvedAt=info.resolvedAt;
       r.onchainBlock=info.blockNumber;
       r.sourceRpc=info.rpcUrl;
-      const own=sessionScannedWallets.some(w=>w.chain==='evm'&&String(w.address).toLowerCase()===String(info.sourceAddress).toLowerCase());
+      const own=sessionScannedWallets.some(w=>w.chain==='evm'&&String(w.address).toLowerCase()===String(info.sourceAddress).toLowerCase()) && info.method!=='BASE_ERC20_TRANSFER_LOG_SYMBOL_UNVERIFIED';
       if(own){
         r.status='SELF_WALLET_CONFIRMED';
         r.reason='PDF TxID resolved on Base to a source address matching an EVM wallet already confirmed in this browser session.';
@@ -190,11 +200,15 @@ async function resolveUnknownBaseSources(){
 }
 
 function solanaRpcEndpoints(custom){
-  return custom?[custom]:[
+  // User-selected endpoint is tried first, with public fallbacks if unavailable.
+  // None of the shared public services guarantees historical RPC access.
+  return [...new Set([
+    ...(custom?[custom]:[]),
     'https://solana-rpc.publicnode.com',
     'https://public-solana-mainnet.rpcnode.dev',
+    'https://rpc.nodeflare.app/solana/public',
     'https://api.mainnet.solana.com'
-  ];
+  ])];
 }
 function rememberScannedWallet(chain,address,network){
   const a=String(address||'').trim();
@@ -239,17 +253,22 @@ function extractSolanaSource(tx,row){
   return {sourceAddress:src.address,destinationAddress:expectedTo,amount:String(destDelta),method:'BALANCE_DELTA',sourceDelta:String(src.delta)};
 }
 async function resolveSolanaTxSource(row,customRpc){
-  let lastErr=null;
+  const failures=[];
   for(const url of solanaRpcEndpoints(customRpc)){
     try{
       const tx=await rpc(url,'getTransaction',[row.txid,{encoding:'jsonParsed',commitment:'finalized',maxSupportedTransactionVersion:0}]);
-      if(!tx)throw new Error('Transaction not found');
+      if(!tx){failures.push(url+': null (not indexed or unavailable)');continue;}
+      if(tx.meta?.err)throw new Error('Transaction failed on-chain: '+JSON.stringify(tx.meta.err));
       const resolved=extractSolanaSource(tx,row);
-      if(!resolved)throw new Error('Could not identify source for destination '+row.destinationAddress);
-      return {...resolved,rpcUrl:url,block:tx.slot,timestamp:tx.blockTime,resolvedAt:new Date().toISOString()};
-    }catch(e){lastErr=e;if(customRpc)break;}
+      if(!resolved)throw new Error('Destination transfer cannot be verified');
+      if(resolved.method==='BALANCE_DELTA'){
+        // A balance difference can have many causes; don't identify a legal sender from it.
+        return {...resolved,ambiguous:true,rpcUrl:url,block:tx.slot,timestamp:tx.blockTime,resolvedAt:new Date().toISOString()};
+      }
+      return {...resolved,ambiguous:false,rpcUrl:url,block:tx.slot,timestamp:tx.blockTime,resolvedAt:new Date().toISOString()};
+    }catch(e){failures.push(url+': '+String(e.message).slice(0,180));}
   }
-  throw lastErr||new Error('Solana source resolution failed');
+  throw new Error('No usable Solana RPC response. '+failures.join(' | ').slice(0,950)+'. A dedicated archive RPC may be required.');
 }
 async function resolveUnknownSolanaSources(){
   if(!reconciliationResults.length)throw new Error('Run reconciliation first.');
@@ -266,18 +285,20 @@ async function resolveUnknownSolanaSources(){
       r.onchainDestinationAddress=info.destinationAddress;
       r.onchainResolvedAmount=info.amount;
       r.sourceResolutionMethod=info.method;
+      r.sourceResolutionConfidence=info.method==='BASE_ERC20_TRANSFER_LOG_SYMBOL_UNVERIFIED'?'SYMBOL_UNVERIFIED':'ONCHAIN_VERIFIED';
+      delete r.baseResolutionError;
       r.sourceResolvedAt=info.resolvedAt;
       r.onchainBlock=info.block;
       r.onchainTimestamp=info.timestamp;
       r.sourceRpc=info.rpcUrl;
-      const own=sessionScannedWallets.some(w=>w.chain==='sol'&&w.address===info.sourceAddress);
+      const own=!info.ambiguous && sessionScannedWallets.some(w=>w.chain==='sol'&&w.address===info.sourceAddress);
       if(own){
         r.status='SELF_WALLET_CONFIRMED';
         r.reason='PDF TxID resolved on-chain to a source address that matches a SOL wallet scanned in this browser session.';
         self++;
       }else{
-        r.status='ONCHAIN_SOURCE_RESOLVED';
-        r.reason='PDF TxID was resolved on-chain. Source address identified, but ownership/account attribution is not established.';
+        r.status=info.ambiguous?'UNRESOLVED':'ONCHAIN_SOURCE_RESOLVED';
+        r.reason=info.ambiguous?'Balance delta suggests an address but no parsed transfer uniquely verifies the source. Manual review required.':'PDF TxID and parsed System transfer resolved on-chain. Ownership/account attribution is not established.';
       }
       resolved++;
     }catch(e){
@@ -538,6 +559,7 @@ function parseIzkyDepositDocument(pages,sourceName,pdfSha){
       sourcePage:page,
       sourceExcerpt:original.slice(0,1800),
       sourceRoute:exchangeDirect?'CRYPTOPANDA_EXCHANGE_RECORDED':'ONCHAIN_DEPOSIT_RECORDED',
+      parseWarning:!exchangeDirect&&!wallet?'INCOMPLETE_PAGE_BOUNDARY_RECORD':null,
       raw:{page,compactSegment:seg.slice(0,1800)}
     });
   }
@@ -647,19 +669,27 @@ function assetEquivalent(a,b){
 function reconcileLedger(){
   const tolMin=Number($('timeTolerance').value)||0,tol=tolMin*60;
   return importedLedger.map(row=>{
+    if(row.parseWarning)return {...row,status:'UNRESOLVED',reason:'Incomplete PDF entry at page boundary: missing destination/TxID. Excluded from financial summary until reviewed.'};
+    const related=sessionEvidencePool.filter(r=>r.txid&&row.txid&&String(r.txid).toLowerCase()===String(row.txid).toLowerCase());
+    const consistent=r=>assetEquivalent(row.asset,r.asset)&&amountClose(row.amount,r.amount)&&
+      (!row.destinationAddress||norm(r.chain,r.to)===norm(r.chain,row.destinationAddress))&&
+      (!row.destinationTag||r.chain!=='xrp'||String(row.destinationTag)===String(r.destinationTag??r.raw?.tx_json?.DestinationTag??r.raw?.tx?.DestinationTag??r.raw?.DestinationTag??''));
     let candidate=null,method='none';
-    if(row.txid){
-      candidate=sessionEvidencePool.find(r=>String(r.txid).toLowerCase()===row.txid.toLowerCase());
-      if(candidate)method='txid_exact';
+    if(related.length){
+      const valid=related.filter(consistent);
+      if(valid.length===1){candidate=valid[0];method='txid_exact_verified_fields';}
+      else if(valid.length>1)return {...row,status:'AMBIGUOUS_MATCH',reason:'Multiple matching transfer records share this TxID; review individual events.'};
+      else return {...row,status:'UNRESOLVED',reason:'TxID matches a trace but asset/amount/destination or XRP destination tag does not match. Manual review required.'};
     }
     if(!candidate){
-      const possible=sessionEvidencePool.filter(r=>assetEquivalent(row.asset,r.asset)&&amountClose(row.amount,r.amount)&&
-        (row.timestamp==null||r.timestamp==null||Math.abs(row.timestamp-r.timestamp)<=tol));
-      if(possible.length===1){candidate=possible[0];method='asset_amount_time';}
-      else if(possible.length>1){return {...row,status:'AMBIGUOUS_MATCH',reason:possible.length+' candidate on-chain transfers match asset/amount/time window.',candidates:possible.map(x=>x.evidenceId)};}
+      // Only promote a unique amount/time match when destination and asset also agree.
+      const possible=sessionEvidencePool.filter(r=>consistent(r)&&
+        row.timestamp!=null&&r.timestamp!=null&&Math.abs(row.timestamp-r.timestamp)<=tol);
+      if(possible.length===1){candidate=possible[0];method='asset_amount_time_destination';}
+      else if(possible.length>1)return {...row,status:'AMBIGUOUS_MATCH',reason:possible.length+' candidates match asset/amount/time/destination.',candidates:possible.map(x=>x.evidenceId)};
     }
-    if(candidate)return {...row,status:'SELF_WALLET_CONFIRMED',reason:method==='txid_exact'?'IZAKA-YA record TxID exactly matches a confirmed self-wallet transfer.':'Asset, amount and time match one confirmed self-wallet transfer within tolerance.',matchedEvidenceId:candidate.evidenceId,matchedTxid:candidate.txid,matchedFrom:candidate.from,matchedTo:candidate.to};
-    return {...row,status:'SOURCE_UNKNOWN',reason:'No matching transfer was found in the self-wallet evidence scanned in this browser session. This does not by itself prove an exchange/direct-service origin.'};
+    if(candidate)return {...row,status:'SELF_WALLET_CONFIRMED',matchMethod:method,reason:method==='txid_exact_verified_fields'?'TxID, asset, amount and destination match scanned wallet transfer (and XRP tag where present).':'Unique asset, amount, time and destination match scanned wallet transfer; no TxID match.',matchedEvidenceId:candidate.evidenceId,matchedTxid:candidate.txid,matchedFrom:candidate.from,matchedTo:candidate.to};
+    return {...row,status:'SOURCE_UNKNOWN',reason:'No sufficiently matching transfer in cached/this-session wallet evidence. Exchange/direct-service origin is not established.'};
   });
 }
 function chainBucketForAsset(asset){
@@ -694,7 +724,7 @@ function addDecimalStrings(values){
   return (neg?'-':'')+str;
 }
 function buildDepositSummary(){
-  const rows=reconciliationResults.length?reconciliationResults:importedLedger;
+  const rows=(reconciliationResults.length?reconciliationResults:importedLedger).filter(r=>!r.parseWarning);
   const map=new Map();
   for(const r of rows){
     const chain=chainBucketForAsset(r.asset);
@@ -721,10 +751,11 @@ function renderDepositSummary(){
     body.appendChild(tr);
   }
   const totalRecords=(reconciliationResults.length?reconciliationResults:importedLedger).length;
+  const excluded=totalRecords-summary.reduce((n,x)=>n+x.count,0);
   const confirmed=summary.reduce((n,x)=>n+x.confirmed,0);
   const resolved=summary.reduce((n,x)=>n+x.sourceResolved,0);
   const unknown=summary.reduce((n,x)=>n+x.unknown,0);
-  meta.textContent=totalRecords?('Total records '+totalRecords+' · Self-wallet confirmed '+confirmed+' · On-chain source resolved '+resolved+' · Source unknown '+unknown):'No deposit records loaded.';
+  meta.textContent=totalRecords?('Total records '+totalRecords+' · Self-wallet confirmed '+confirmed+' · On-chain source resolved '+resolved+' · Source unknown '+unknown+(excluded?' · Incomplete PDF rows excluded from totals '+excluded:'') ):'No deposit records loaded.';
 }
 function renderReconciliation(){
   const rows=$('reconRows'); if(!rows)return;rows.innerHTML='';
