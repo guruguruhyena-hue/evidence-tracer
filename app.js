@@ -213,6 +213,31 @@ function parseIzkyDepositDocument(pages,sourceName,pdfSha){
   }
   return rows;
 }
+function rebuildPdfVisualText(items){
+  const words=[];
+  for(const item of items||[]){
+    if(!item||typeof item.str!=='string'||!item.str) continue;
+    const t=item.transform||[];
+    words.push({text:item.str,x:Number(t[4]||0),y:Number(t[5]||0)});
+  }
+  words.sort((a,b)=>{
+    const dy=b.y-a.y;
+    if(Math.abs(dy)>2.5) return dy;
+    return a.x-b.x;
+  });
+  const lines=[];let current=[],lineY=null;
+  for(const w of words){
+    if(lineY==null||Math.abs(w.y-lineY)<=2.5){
+      current.push(w); if(lineY==null) lineY=w.y;
+    }else{
+      current.sort((a,b)=>a.x-b.x);
+      lines.push(current.map(x=>x.text).join(' '));
+      current=[w];lineY=w.y;
+    }
+  }
+  if(current.length){current.sort((a,b)=>a.x-b.x);lines.push(current.map(x=>x.text).join(' '));}
+  return lines.join('\n');
+}
 async function parsePdfLedgerFile(file){
   const buffer=await file.arrayBuffer();
   const pdfSha=await sha256Bytes(buffer.slice(0));
@@ -222,16 +247,20 @@ async function parsePdfLedgerFile(file){
   for(let p=1;p<=doc.numPages;p++){
     const page=await doc.getPage(p);
     const content=await page.getTextContent();
-    let text='';
-    for(const item of content.items){
-      if(!('str' in item))continue;
-      text+=item.str;
-      text+=item.hasEOL?'\n':' ';
-    }
+    const text=rebuildPdfVisualText(content.items);
     pages.push({page:p,text});
   }
   const rows=parseIzkyDepositDocument(pages,file.name,pdfSha);
-  return {rows,meta:{sourceType:'PDF',sourceFileName:file.name,sourcePdfSha256:pdfSha,pageCount:doc.numPages,parsedRecordCount:rows.length,pagesWithText:pages.filter(x=>x.text.trim()).length,textChars:pages.reduce((n,x)=>n+x.text.length,0),containsDepositPhrase:pages.some(x=>x.text.replace(/\\s+/g,'').includes('を入金しました'))}};
+  const allText=pages.map(x=>x.text).join('\n');
+  return {rows,meta:{
+    sourceType:'PDF',sourceFileName:file.name,sourcePdfSha256:pdfSha,pageCount:doc.numPages,
+    parsedRecordCount:rows.length,pagesWithText:pages.filter(x=>x.text.trim()).length,
+    textChars:allText.length,
+    containsDepositPhrase:allText.replace(/\s+/g,'').includes('を入金しました'),
+    containsTxId:/TxID/i.test(allText),
+    containsWallet:/受信\s*Wallet\s*アドレス/i.test(allText),
+    diagnosticPreview:allText.slice(0,600)
+  }};
 }
 function parseCsvLine(line){
   const out=[];let cur='',q=false;
@@ -333,9 +362,15 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
      if(!file){importedLedger=[];$('reconStatus').textContent='No IZAKA-YA records loaded.';return;}
      $('reconStatus').textContent='Reading '+file.name+' locally…';
      importedLedger=await parseLedgerFile(file);
-     $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) extracted locally from '+(importedSourceMeta?.sourceType||'file')+'. Nothing uploaded to a server.'+
-       (importedSourceMeta?.sourcePdfSha256?' PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'')+
-       (importedLedger.length===0?' No deposit records were extracted. PDF text chars: '+(importedSourceMeta?.textChars??'unknown')+', deposit phrase detected: '+String(importedSourceMeta?.containsDepositPhrase??false)+'.':'');
+     $('reconStatus').textContent='Extracted records: '+importedLedger.length+
+       ' | Source: '+(importedSourceMeta?.sourceType||'file')+
+       (importedSourceMeta?.sourcePdfSha256?' | PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'')+
+       (importedSourceMeta?.sourceType==='PDF'?' | pages: '+(importedSourceMeta?.pageCount??'?')+
+        ' | text chars: '+(importedSourceMeta?.textChars??'?')+
+        ' | deposit phrase: '+String(importedSourceMeta?.containsDepositPhrase??false)+
+        ' | TxID: '+String(importedSourceMeta?.containsTxId??false)+
+        ' | Wallet label: '+String(importedSourceMeta?.containsWallet??false):'')+
+       ' | Nothing uploaded to a server.';
    }catch(e){importedLedger=[];$('reconStatus').textContent='Import error: '+e.message;}
  });
  if($('reconcile')) $('reconcile').onclick=async()=>{
@@ -345,8 +380,13 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
        $('reconStatus').textContent='Reading '+file.name+' locally…';
        try{
          importedLedger=await parseLedgerFile(file);
-         $('reconStatus').textContent=importedLedger.length+' IZAKA-YA record(s) extracted locally from '+(importedSourceMeta?.sourceType||'file')+'.'+
-           (importedSourceMeta?.sourcePdfSha256?' PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'');
+         $('reconStatus').textContent='Extracted records: '+importedLedger.length+
+           ' | Source: '+(importedSourceMeta?.sourceType||'file')+
+           (importedSourceMeta?.sourcePdfSha256?' | PDF SHA-256: '+importedSourceMeta.sourcePdfSha256:'')+
+           ' | text chars: '+(importedSourceMeta?.textChars??'?')+
+           ' | deposit phrase: '+String(importedSourceMeta?.containsDepositPhrase??false)+
+           ' | TxID: '+String(importedSourceMeta?.containsTxId??false)+
+           ' | Wallet label: '+String(importedSourceMeta?.containsWallet??false);
        }catch(e){
          $('reconStatus').textContent='PDF import error: '+e.message;
          return alert('PDFの読み取りに失敗しました: '+e.message);
