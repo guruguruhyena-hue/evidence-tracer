@@ -697,7 +697,7 @@ function amountClose(a,b){
   try{
     const x=Number(a),y=Number(b);
     if(!Number.isFinite(x)||!Number.isFinite(y))return String(a)===String(b);
-    const tol=Math.max(1e-10,Math.abs(y)*1e-8);
+    const tol=Math.max(1e-12,Math.abs(y)*1e-13);
     return Math.abs(x-y)<=tol;
   }catch{return String(a)===String(b);}
 }
