@@ -7,12 +7,12 @@
 
 <section class="card no-print">
   <h2>Deposit Reconciliation / 入金照合</h2>
-  <p class="muted">IZAKA-YAの入金・取引記録をCSVまたはJSONで読み込み、現在のブラウザセッションで確認した本人wallet送金と照合します。ファイル内容はサーバーへ送信されません。</p>
+  <p class="muted">IZAKA-YAの入金・取引記録をPDF / CSV / JSONで読み込み、現在のブラウザセッションで確認した本人wallet送金と照合します。ファイル内容はサーバーへ送信されません。</p>
   <div class="grid">
-    <div><label>IZAKA-YA record file (CSV / JSON)</label><input id="ledgerFile" type="file" accept=".csv,.json,text/csv,application/json"></div>
+    <div><label>IZAKA-YA record file (PDF / CSV / JSON)</label><input id="ledgerFile" type="file" accept=".pdf,.csv,.json,application/pdf,text/csv,application/json"></div>
     <div><label>Time tolerance (minutes)</label><input id="timeTolerance" type="number" min="0" max="1440" value="180"></div>
   </div>
-  <p class="muted">推奨列: date/time または timestamp, asset, amount, txid（任意）, id（任意）。TxIDがあれば最優先で照合します。</p>
+  <p class="muted">PDF: IZAKA-YA履歴PDFを直接読み取り、ページ番号・抽出原文・PDF SHA-256を保持します。CSV/JSON推奨列: date/time または timestamp, asset, amount, txid（任意）, id（任意）。TxIDがあれば最優先で照合します。</p>
   <div class="actions"><button id="reconcile" class="primary">Reconcile imported records</button><button id="exportRecon">Export reconciliation JSON</button></div>
   <p id="reconStatus" class="muted">No IZAKA-YA records loaded.</p>
 </section>
@@ -23,5 +23,5 @@
   <div id="reconDetails" class="evidence-details"></div>
 </section>
 
-<section class="card"><b>Evidence Tracer v0.2.0</b><p class="muted">Static single-file runtime. Server-side storage: NONE · Analytics: NONE · Wallet connection: NONE.</p></section></div>
+<section class="card"><b>Evidence Tracer v0.3.0</b><p class="muted">Static single-file runtime. Server-side storage: NONE · Analytics: NONE · Wallet connection: NONE.</p></section></div>
 <script src="./app.js" defer></script></body></html>
