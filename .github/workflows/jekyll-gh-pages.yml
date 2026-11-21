@@ -28,6 +28,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Vendor PDF.js locally
         run: npm run build:vendor
+      - name: Runtime syntax checks
+        run: npm run syntax:test
       - name: Privacy checks
         run: npm run privacy:test
       - name: Setup Pages
