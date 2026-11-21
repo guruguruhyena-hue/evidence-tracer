@@ -70,7 +70,31 @@ function renderTraceCacheStatus(){
 
 // Public builds must not contain case-specific addresses or evidence.
 // Targets must be supplied by each investigator in their own local session.
-const knownProfile={caseProfile:'USER_DEFINED',version:'public-1',addresses:[]};
+const knownProfile={caseProfile:'USER_DEFINED',version:'public-2',addresses:[]};
+const CASE_TARGETS_KEY='evidenceTracer.localTargets.v1';
+function applyLocalTargets(){
+  let values=[];
+  try{const raw=JSON.parse(localStorage.getItem(CASE_TARGETS_KEY)||'[]');if(Array.isArray(raw))values=raw;}catch{}
+  knownProfile.addresses=values.filter(r=>r&&['btc','evm','sol','xrp'].includes(r.chain)&&typeof r.address==='string').map((r,i)=>({
+    id:'LOCAL-TARGET-'+(i+1),chain:r.chain,address:r.address,classification:'USER_DEFINED_TARGET',evidenceLevel:'USER_DECLARED',evidenceRefs:['入力された送金先']
+  }));
+}
+function storeLocalTargets(){
+  const value=String($('localTargets')?.value||'');
+  const lines=value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const targets=[];
+  for(const line of lines){
+    const pos=line.indexOf(':');
+    if(pos<1)throw new Error('各行を btc:アドレス / evm:アドレス / sol:アドレス / xrp:アドレス として入力してください。');
+    const chain=line.slice(0,pos).trim().toLowerCase(),address=line.slice(pos+1).trim();
+    if(!['btc','evm','sol','xrp'].includes(chain)||!address)throw new Error('Invalid chain or address: '+line);
+    targets.push({chain,address});
+  }
+  localStorage.setItem(CASE_TARGETS_KEY,JSON.stringify(targets));
+  applyLocalTargets();
+  $('localTargetsStatus').textContent=targets.length+'件の照合先をこのブラウザに保存しました。公開サイト・GitHubへは送信されません。';
+}
+
 const $=id=>document.getElementById(id);
 function units(value,decimals){let s=String(value||'0').replace(/^0+/,'')||'0';const d=Number(decimals||0);if(d===0)return s;if(s.length<=d)s=s.padStart(d+1,'0');const a=s.slice(0,-d),b=s.slice(-d).replace(/0+$/,'');return b?(`${a}.${b}`):a;}
 function norm(chain,a){return chain==='evm'?String(a).toLowerCase():String(a);}
@@ -828,7 +852,16 @@ function renderReconciliation(){
 }
 
 function render(){const rows=$('rows');rows.innerHTML='';for(const r of matches){const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):'—')}</td><td>${esc(r.network)}</td><td>${esc(r.asset)}</td><td>${esc(r.amount)}</td><td><code>${esc(r.to)}</code></td><td><code>${esc(r.txid)}</code></td><td>${esc(r.classification)}</td><td>${esc((r.evidenceRefs||[]).join(', '))}</td>`;rows.appendChild(tr);}$('summary').textContent=matches.length+' matched transfer(s).';renderReportMeta();renderEvidenceDetails();}
-function init(){ restoreTraceCache(); $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.chainId}">${c.name}</option>`).join('');
+function init(){ restoreTraceCache();applyLocalTargets();
+ if($('localTargets')){
+  $('localTargets').value=knownProfile.addresses.map(r=>r.chain+':'+r.address).join('\n');
+  $('localTargetsStatus').textContent=knownProfile.addresses.length+'件の照合先をこのブラウザ内に読み込みました。';
+  $('saveLocalTargets').onclick=()=>{try{storeLocalTargets();}catch(e){$('localTargetsStatus').textContent='Error: '+e.message;}};
+  $('clearLocalTargets').onclick=()=>{
+   localStorage.removeItem(CASE_TARGETS_KEY);applyLocalTargets();$('localTargets').value='';$('localTargetsStatus').textContent='このブラウザの照合先を削除しました。';
+  };
+ }
+ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.chainId}">${c.name}</option>`).join('');
  const update=()=>{const k=$('kind').value;$('networkWrap').style.display='block';$('network').disabled=k!=='evm';$('networkWrap').style.opacity=k==='evm'?'1':'0.55';$('keyWrap').style.display=k==='evm'?'block':'none';$('rpcWrap').style.display=(k==='sol'||k==='xrp')?'block':'none';};$('kind').addEventListener('change',update);update();
  $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);scanRetrievedAt=new Date().toISOString();rememberScannedWallet($('kind').value,address,$('kind').value==='evm'?(EVM_CHAINS.find(x=>x.chainId===req.network)?.name||'EVM'):$('kind').value);matches=matchTransfers(rec);matches=await enrichEvidenceRecords(matches);addToSessionPool(matches);saveTraceCache();const c=EVM_CHAINS.find(x=>x.chainId===req.network);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile)),retrievedAt:scanRetrievedAt,networkName:($('kind').value==='evm'&&c)?c.name:($('kind').value==='btc'?'Bitcoin':$('kind').value==='sol'?'Solana':'XRP Ledger')};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
  $('json').onclick=()=>download(exportBaseName()+'.json',JSON.stringify({meta:lastMeta,records:matches},null,2),'application/json');
