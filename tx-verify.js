@@ -1,6 +1,7 @@
 (()=>{'use strict';
 const $=id=>document.getElementById(id);let last=null;
 const NETWORKS={
+ '1':{label:'Ethereum Mainnet',chainHex:'0x1',urls:['https://eth.blockscout.com/api/v2'],rpcs:['https://ethereum-rpc.publicnode.com','https://eth.drpc.org'],explorer:'https://eth.blockscout.com/tx/'},
  '8453':{label:'Base',chainHex:'0x2105',urls:['https://base.blockscout.com/api/v2','https://api.blockscout.com/8453/api/v2'],rpcs:['https://mainnet.base.org','https://base-rpc.publicnode.com'],explorer:'https://base.blockscout.com/tx/'},
  '10':{label:'Optimism',chainHex:'0xa',urls:['https://explorer.optimism.io/api/v2','https://optimism.blockscout.com/api/v2','https://api.blockscout.com/10/api/v2'],rpcs:['https://mainnet.optimism.io','https://optimism-rpc.publicnode.com','https://optimism.drpc.org'],explorer:'https://explorer.optimism.io/tx/'}
 };
