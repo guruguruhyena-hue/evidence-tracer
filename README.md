@@ -1,6 +1,6 @@
 # Evidence Tracer
 
-Open-source, local-first blockchain evidence generator. Initial case profile: IZAKA-YA.
+Open-source, local-first blockchain evidence generator. Each case is entered by the user. No default victim, wallet, or case profile is bundled.
 
 > **MVP status:** v0.1.x is an experimental evidence-assistance tool. Independently verify exported transaction facts before police/legal use.
 
@@ -9,7 +9,7 @@ Open-source, local-first blockchain evidence generator. Initial case profile: IZ
 - No wallet connection
 - No server-side application storage
 - No analytics / telemetry
-- No localStorage / IndexedDB persistence
+- Wallet trace caching and target-address storage use browser localStorage (user-controlled; not encrypted)
 - Public addresses only
 - API keys remain in page memory only
 - Evidence exports are generated in the browser
@@ -49,3 +49,8 @@ npm run privacy:test
 
 ## Status / limitations
 v0.1.x MVP. Before a v1.0 police-use release, chain parsers need fixture tests against known transactions, pagination/source hardening, exact decimal-safe token math, Solana SPL support, XRPL delivered-amount handling, and independent review.
+
+## Police Evidence Pack (separate page)
+Open `report.html` to prepare a generic police submission summary. This page ships without individual case data, stores nothing persistently, computes local SHA-256 of selected files and accepts an optional reconciliation JSON. It is an evidence-organizing tool, not a forensic certification. The user must preserve originals separately.
+
+**Historical exposure:** Earlier public commits accidentally contained case-specific details. Removing files from the current Git tree does not remove public commit history, clones, archives or caches; consider restricting the old repository and moving the cleaned code to a new public repository with no inherited history.
