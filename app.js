@@ -2,6 +2,7 @@
 const EVM_CHAINS=[
 {name:'Ethereum',chainId:'1',symbol:'ETH'},{name:'BNB Smart Chain',chainId:'56',symbol:'BNB'},{name:'Polygon',chainId:'137',symbol:'POL'},{name:'Arbitrum One',chainId:'42161',symbol:'ETH'},{name:'OP Mainnet',chainId:'10',symbol:'ETH'},{name:'Base',chainId:'8453',symbol:'ETH'},{name:'Avalanche C-Chain',chainId:'43114',symbol:'AVAX'},{name:'Linea',chainId:'59144',symbol:'ETH'},{name:'Scroll',chainId:'534352',symbol:'ETH'},{name:'zkSync Era',chainId:'324',symbol:'ETH'},{name:'HyperEVM',chainId:'999',symbol:'HYPE'},{name:'opBNB',chainId:'204',symbol:'BNB'}];
 let matches=[],lastMeta={};
+let scanRetrievedAt=null;
 const knownProfile={
  caseProfile:'IZAKA-YA',version:'2026-11-22.1',
  addresses:[
@@ -43,10 +44,69 @@ function exportChainLabel(){
 function exportBaseName(){ return 'EvidenceTracer-'+exportChainLabel(); }
 
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function render(){const rows=$('rows');rows.innerHTML='';for(const r of matches){const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):'—')}</td><td>${esc(r.network)}</td><td>${esc(r.asset)}</td><td>${esc(r.amount)}</td><td><code>${esc(r.to)}</code></td><td><code>${esc(r.txid)}</code></td><td>${esc(r.classification)}</td><td>${esc((r.evidenceRefs||[]).join(', '))}</td>`;rows.appendChild(tr);}$('summary').textContent=matches.length+' matched transfer(s).';}
+
+async function enrichEvidenceRecords(records){
+  const out=[];
+  for(const r of records){
+    const canonical=JSON.stringify({
+      chain:r.chain,network:r.network,txid:r.txid,from:r.from,to:r.to,
+      asset:r.asset,amount:r.amount,timestamp:r.timestamp,
+      matchedAddressId:r.matchedAddressId,classification:r.classification,
+      evidenceLevel:r.evidenceLevel,evidenceRefs:r.evidenceRefs
+    });
+    const recordSha256=await sha256(canonical);
+    const chainLabel=exportChainLabel();
+    out.push(Object.assign({},r,{
+      evidenceId:'ET-'+chainLabel+'-'+recordSha256.slice(0,12).toUpperCase(),
+      recordSha256,
+      retrievedAt:scanRetrievedAt,
+      caseProfileVersion:knownProfile.version,
+      matchBasis:'Destination address exactly matches case-profile address '+r.matchedAddressId+'; evidence refs: '+(r.evidenceRefs||[]).join(', ')
+    }));
+  }
+  return out;
+}
+function renderReportMeta(){
+  const el=$('reportMeta');
+  if(!el)return;
+  if(!lastMeta || !lastMeta.scannedAddress){el.innerHTML='';return;}
+  el.innerHTML=
+    '<h3>Evidence report metadata</h3>'+
+    '<dl class="meta-grid">'+
+    '<div><dt>From address</dt><dd><code>'+esc(lastMeta.scannedAddress)+'</code></dd></div>'+
+    '<div><dt>Chain / Network</dt><dd>'+esc(exportChainLabel())+(lastMeta.networkName?' / '+esc(lastMeta.networkName):'')+'</dd></div>'+
+    '<div><dt>Case Profile Version</dt><dd>'+esc(lastMeta.caseProfileVersion||'—')+'</dd></div>'+
+    '<div><dt>Case Profile SHA-256</dt><dd><code>'+esc(lastMeta.caseProfileSha256||'—')+'</code></dd></div>'+
+    '<div><dt>Retrieved at</dt><dd>'+esc(lastMeta.retrievedAt||'—')+'</dd></div>'+
+    '<div><dt>Processing</dt><dd>LOCAL_BROWSER / server-side storage NONE</dd></div>'+
+    '</dl>';
+}
+function renderEvidenceDetails(){
+  const box=$('evidenceDetails'); if(!box)return;
+  if(!matches.length){box.innerHTML='';return;}
+  box.innerHTML='<h2>Evidence details</h2>'+matches.map(r=>
+    '<article class="evidence-card">'+
+    '<div class="evidence-id">'+esc(r.evidenceId||'')+'</div>'+
+    '<dl class="evidence-grid">'+
+    '<div><dt>Evidence ID</dt><dd>'+esc(r.evidenceId||'')+'</dd></div>'+
+    '<div><dt>Network</dt><dd>'+esc(r.network)+'</dd></div>'+
+    '<div><dt>Asset / Amount</dt><dd>'+esc(r.asset)+' '+esc(r.amount)+'</dd></div>'+
+    '<div><dt>Retrieved at</dt><dd>'+esc(r.retrievedAt||'')+'</dd></div>'+
+    '<div class="wide"><dt>From</dt><dd><code>'+esc(r.from)+'</code></dd></div>'+
+    '<div class="wide"><dt>To</dt><dd><code>'+esc(r.to)+'</code></dd></div>'+
+    '<div class="wide"><dt>Full TxID</dt><dd><code>'+esc(r.txid)+'</code></dd></div>'+
+    '<div><dt>Classification</dt><dd>'+esc(r.classification)+'</dd></div>'+
+    '<div><dt>Evidence Level</dt><dd>'+esc(r.evidenceLevel)+'</dd></div>'+
+    '<div><dt>Case Profile Version</dt><dd>'+esc(r.caseProfileVersion||'')+'</dd></div>'+
+    '<div class="wide"><dt>Record SHA-256</dt><dd><code>'+esc(r.recordSha256||'')+'</code></dd></div>'+
+    '<div class="wide"><dt>Match basis</dt><dd>'+esc(r.matchBasis||'')+'</dd></div>'+
+    '</dl></article>').join('');
+}
+
+function render(){const rows=$('rows');rows.innerHTML='';for(const r of matches){const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):'—')}</td><td>${esc(r.network)}</td><td>${esc(r.asset)}</td><td>${esc(r.amount)}</td><td><code>${esc(r.to)}</code></td><td><code>${esc(r.txid)}</code></td><td>${esc(r.classification)}</td><td>${esc((r.evidenceRefs||[]).join(', '))}</td>`;rows.appendChild(tr);}$('summary').textContent=matches.length+' matched transfer(s).';renderReportMeta();renderEvidenceDetails();}
 function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.chainId}">${c.name}</option>`).join('');
  const update=()=>{const k=$('kind').value;$('networkWrap').style.display='block';$('network').disabled=k!=='evm';$('networkWrap').style.opacity=k==='evm'?'1':'0.55';$('keyWrap').style.display=k==='evm'?'block':'none';$('rpcWrap').style.display=(k==='sol'||k==='xrp')?'block':'none';};$('kind').addEventListener('change',update);update();
- $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);matches=matchTransfers(rec);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile))};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
+ $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);scanRetrievedAt=new Date().toISOString();matches=matchTransfers(rec);matches=await enrichEvidenceRecords(matches);const c=EVM_CHAINS.find(x=>x.chainId===req.network);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile)),retrievedAt:scanRetrievedAt,networkName:($('kind').value==='evm'&&c)?c.name:($('kind').value==='btc'?'Bitcoin':$('kind').value==='sol'?'Solana':'XRP Ledger')};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
  $('json').onclick=()=>download(exportBaseName()+'.json',JSON.stringify({meta:lastMeta,records:matches},null,2),'application/json');
  $('print').onclick=()=>{
   const oldTitle=document.title;
@@ -56,6 +116,6 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
   window.print();
   setTimeout(()=>{ if(document.title!==oldTitle) document.title=oldTitle; },1500);
 };
- $('clear').onclick=()=>{matches=[];lastMeta={};$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
+ $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;$('addr').value='';$('key').value='';$('rpc').value='';render();$('status').textContent='Cleared from page memory.';};
 }
 window.addEventListener('DOMContentLoaded',()=>{try{init();document.body.dataset.appReady='true';}catch(e){document.getElementById('boot-error').textContent='Application error: '+e.message;document.getElementById('boot-error').style.display='block';}});
