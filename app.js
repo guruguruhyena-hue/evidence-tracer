@@ -8,6 +8,66 @@ let importedLedger=[];
 let reconciliationResults=[];
 let importedSourceMeta=null;
 let scanRetrievedAt=null;
+const TRACE_STORE_KEY='evidenceTracer.traceCache.v1';
+function safeLoadTraceCache(){
+  try{
+    const raw=localStorage.getItem(TRACE_STORE_KEY);
+    if(!raw)return {version:1,wallets:[],evidence:[]};
+    const j=JSON.parse(raw);
+    return {
+      version:1,
+      wallets:Array.isArray(j.wallets)?j.wallets:[],
+      evidence:Array.isArray(j.evidence)?j.evidence:[]
+    };
+  }catch{return {version:1,wallets:[],evidence:[]};}
+}
+function saveTraceCache(){
+  const payload={
+    version:1,
+    savedAt:new Date().toISOString(),
+    wallets:sessionScannedWallets,
+    evidence:sessionEvidencePool.map(r=>{
+      const copy={...r};
+      delete copy.raw;
+      return copy;
+    })
+  };
+  localStorage.setItem(TRACE_STORE_KEY,JSON.stringify(payload));
+  renderTraceCacheStatus();
+}
+function restoreTraceCache(){
+  const c=safeLoadTraceCache();
+  sessionScannedWallets=[...c.wallets];
+  sessionEvidencePool=[...c.evidence];
+  renderTraceCacheStatus();
+  return c;
+}
+function clearTraceCache(){
+  localStorage.removeItem(TRACE_STORE_KEY);
+  sessionScannedWallets=[];
+  sessionEvidencePool=[];
+  renderTraceCacheStatus();
+}
+function exportTraceCache(){
+  const c=safeLoadTraceCache();
+  download('EvidenceTracer-TraceCache.json',JSON.stringify(c,null,2),'application/json');
+}
+async function importTraceCacheFile(file){
+  const text=await file.text();
+  const j=JSON.parse(text);
+  if(!j||!Array.isArray(j.wallets)||!Array.isArray(j.evidence))throw new Error('Invalid trace cache file.');
+  sessionScannedWallets=[...j.wallets];
+  sessionEvidencePool=[...j.evidence];
+  saveTraceCache();
+  return {wallets:sessionScannedWallets.length,evidence:sessionEvidencePool.length};
+}
+function renderTraceCacheStatus(){
+  const el=$('traceCacheStatus');
+  if(!el)return;
+  const c=safeLoadTraceCache();
+  el.textContent='Saved trace cache: '+c.wallets.length+' wallet(s) / '+c.evidence.length+' evidence record(s). API keys and private keys are never stored.';
+}
+
 const knownProfile={
  caseProfile:'IZAKA-YA',version:'2026-11-22.1',
  addresses:[
@@ -677,9 +737,9 @@ function renderReconciliation(){
 }
 
 function render(){const rows=$('rows');rows.innerHTML='';for(const r of matches){const tr=document.createElement('tr');tr.innerHTML=`<td>${esc(r.timestamp?new Date(r.timestamp*1000).toLocaleString('ja-JP'):'—')}</td><td>${esc(r.network)}</td><td>${esc(r.asset)}</td><td>${esc(r.amount)}</td><td><code>${esc(r.to)}</code></td><td><code>${esc(r.txid)}</code></td><td>${esc(r.classification)}</td><td>${esc((r.evidenceRefs||[]).join(', '))}</td>`;rows.appendChild(tr);}$('summary').textContent=matches.length+' matched transfer(s).';renderReportMeta();renderEvidenceDetails();}
-function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.chainId}">${c.name}</option>`).join('');
+function init(){ restoreTraceCache(); $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.chainId}">${c.name}</option>`).join('');
  const update=()=>{const k=$('kind').value;$('networkWrap').style.display='block';$('network').disabled=k!=='evm';$('networkWrap').style.opacity=k==='evm'?'1':'0.55';$('keyWrap').style.display=k==='evm'?'block':'none';$('rpcWrap').style.display=(k==='sol'||k==='xrp')?'block':'none';};$('kind').addEventListener('change',update);update();
- $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);scanRetrievedAt=new Date().toISOString();rememberScannedWallet($('kind').value,address,$('kind').value==='evm'?(EVM_CHAINS.find(x=>x.chainId===req.network)?.name||'EVM'):$('kind').value);matches=matchTransfers(rec);matches=await enrichEvidenceRecords(matches);addToSessionPool(matches);const c=EVM_CHAINS.find(x=>x.chainId===req.network);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile)),retrievedAt:scanRetrievedAt,networkName:($('kind').value==='evm'&&c)?c.name:($('kind').value==='btc'?'Bitcoin':$('kind').value==='sol'?'Solana':'XRP Ledger')};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
+ $('scan').onclick=async()=>{const address=$('addr').value.trim();if(!address)return alert('Public addressを入力してください。');$('status').textContent='Scanning…';try{const req={address,apiKey:$('key').value.trim(),rpcUrl:$('rpc').value.trim()||undefined,network:$('network').value,maxRecords:Number($('max').value)||200};let rec=[];if($('kind').value==='btc')rec=await scanBitcoin(req);if($('kind').value==='evm')rec=await scanEvm(req);if($('kind').value==='sol')rec=await scanSolana(req);if($('kind').value==='xrp')rec=await scanXrp(req);scanRetrievedAt=new Date().toISOString();rememberScannedWallet($('kind').value,address,$('kind').value==='evm'?(EVM_CHAINS.find(x=>x.chainId===req.network)?.name||'EVM'):$('kind').value);matches=matchTransfers(rec);matches=await enrichEvidenceRecords(matches);addToSessionPool(matches);saveTraceCache();const c=EVM_CHAINS.find(x=>x.chainId===req.network);lastMeta={scannedAddress:address,sourceRecordCount:rec.length,caseProfileVersion:knownProfile.version,caseProfileSha256:await sha256(JSON.stringify(knownProfile)),retrievedAt:scanRetrievedAt,networkName:($('kind').value==='evm'&&c)?c.name:($('kind').value==='btc'?'Bitcoin':$('kind').value==='sol'?'Solana':'XRP Ledger')};render();$('status').textContent='Completed. '+rec.length+' outgoing candidate(s) inspected; '+matches.length+' matched.';}catch(e){$('status').textContent='Error: '+e.message;}};
  $('json').onclick=()=>download(exportBaseName()+'.json',JSON.stringify({meta:lastMeta,records:matches},null,2),'application/json');
  $('print').onclick=()=>{
   const oldTitle=document.title;
@@ -763,6 +823,20 @@ function init(){ $('network').innerHTML=EVM_CHAINS.map(c=>`<option value="${c.ch
    },null,2),'application/json');
  };
 
- $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];sessionScannedWallets=[];importedLedger=[];reconciliationResults=[];importedSourceMeta=null;$('addr').value='';$('key').value='';$('rpc').value='';render();renderDepositSummary();$('status').textContent='Cleared from page memory.';};
+
+ if($('saveTraceCache')) $('saveTraceCache').onclick=()=>{saveTraceCache();$('traceCacheStatus').textContent+=' Saved now.';};
+ if($('loadTraceCache')) $('loadTraceCache').onclick=()=>{const c=restoreTraceCache();$('traceCacheStatus').textContent='Restored '+c.wallets.length+' wallet(s) / '+c.evidence.length+' evidence record(s) from this browser.';};
+ if($('clearTraceCache')) $('clearTraceCache').onclick=()=>{clearTraceCache();$('traceCacheStatus').textContent='Saved trace cache cleared from this browser.';};
+ if($('exportTraceCache')) $('exportTraceCache').onclick=()=>exportTraceCache();
+ const traceCacheFile=$('traceCacheFile');
+ if(traceCacheFile) traceCacheFile.addEventListener('change',async()=>{
+   try{
+     const file=traceCacheFile.files&&traceCacheFile.files[0];
+     if(!file)return;
+     const r=await importTraceCacheFile(file);
+     $('traceCacheStatus').textContent='Imported '+r.wallets+' wallet(s) / '+r.evidence+' evidence record(s).';
+   }catch(e){$('traceCacheStatus').textContent='Trace cache import error: '+e.message;}
+ });
+ $('clear').onclick=()=>{matches=[];lastMeta={};scanRetrievedAt=null;sessionEvidencePool=[];sessionScannedWallets=[];importedLedger=[];reconciliationResults=[];importedSourceMeta=null;$('addr').value='';$('key').value='';$('rpc').value='';render();renderDepositSummary();renderTraceCacheStatus();$('status').textContent='Cleared from page memory. Saved trace cache remains available.';};
 }
 window.addEventListener('DOMContentLoaded',()=>{try{init();document.body.dataset.appReady='true';}catch(e){document.getElementById('boot-error').textContent='Application error: '+e.message;document.getElementById('boot-error').style.display='block';}});
