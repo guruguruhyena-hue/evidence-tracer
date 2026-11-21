@@ -71,7 +71,7 @@ async function lookupRpc(chain,hash,failures){
  throw Error('Blockscout API と公開RPCのいずれからも取得できませんでした。 '+failures.join(' | '));
 }
 
-async function lookup(chain,hash){
+async function lookup(chain,hash,customRpc){
  const failures=[];
  for(const base of chain.urls){
   try{
@@ -82,7 +82,7 @@ async function lookup(chain,hash){
    return {tx,tokenTransfers:token.items,source:base,sourceType:'BLOCKSCOUT_API',warnings:[]};
   }catch(e){failures.push(base+': '+e.message);}
  }
- return lookupRpc(chain,hash,failures);
+ return lookupRpc({...chain,rpcs:customRpc?[customRpc,...chain.rpcs]:chain.rpcs},hash,failures);
 }
 function setDetails(id,entries){
  const root=$(id);root.replaceChildren();
@@ -106,10 +106,12 @@ function show(out,chain){
 }
 $('verifyButton').addEventListener('click',async()=>{
  const hash=$('verifyHash').value.trim(),chain=NETWORKS[$('verifyNetwork').value];
+ const rawRpc=$('verifyRpc')?.value.trim()||'';
+ let customRpc='';if(rawRpc){try{const u=new URL(rawRpc);if(u.protocol!=='https:'||u.username||u.password)throw Error('HTTPS only');customRpc=u.href;}catch{$('verifyStatus').textContent='Custom RPCはHTTPS URLで入力してください。';return;}}
  if(!/^0x[a-fA-F0-9]{64}$/.test(hash)){$('verifyStatus').textContent='0xから始まる64桁の取引ハッシュを入力してください。';return;}
  $('verifyButton').disabled=true;$('verifyExport').disabled=true;last=null;$('verifyTx').textContent='照会中…';$('verifyTransfers').replaceChildren();$('verifyStatus').textContent='Blockscout APIを照会しています。取得できない場合は公式・公開RPCへ切り替えます…';
  try{
-  const data=await lookup(chain,hash);show(data,chain);
+  const data=await lookup(chain,hash,customRpc);show(data,chain);
   last={schema:'evidence-tracer-readonly-tx-verification-v1',retrievedAt:new Date().toISOString(),chain:chain.label,hash,provider:data.source,sourceType:data.sourceType,warnings:data.warnings,transaction:data.tx,tokenTransfers:data.tokenTransfers,verificationScope:'Public explorer API observation; not an ownership or forensic certification'};
   $('verifyStatus').textContent='取引データを取得しました（'+data.sourceType+'）。成功状態とトークン移動の内容を確認してください。RPCの数量はraw単位で表示されます。';
   $('verifyExport').disabled=false;
