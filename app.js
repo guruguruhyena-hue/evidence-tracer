@@ -82,9 +82,40 @@ const $=id=>document.getElementById(id);
 function units(value,decimals){let s=String(value||'0').replace(/^0+/,'')||'0';const d=Number(decimals||0);if(d===0)return s;if(s.length<=d)s=s.padStart(d+1,'0');const a=s.slice(0,-d),b=s.slice(-d).replace(/0+$/,'');return b?(`${a}.${b}`):a;}
 function norm(chain,a){return chain==='evm'?String(a).toLowerCase():String(a);}
 function matchTransfers(records){return records.flatMap(r=>{const hit=knownProfile.addresses.find(k=>k.chain===r.chain&&norm(k.chain,k.address)===norm(k.chain,r.to));return hit?[Object.assign({},r,{matchedAddressId:hit.id,classification:hit.classification,evidenceLevel:hit.evidenceLevel,evidenceRefs:hit.evidenceRefs})]:[];});}
-async function scanBitcoin(req){const API='https://blockstream.info/api';const res=await fetch(`${API}/address/${encodeURIComponent(req.address)}/txs`,{cache:'no-store'});if(!res.ok)throw new Error('Bitcoin API error '+res.status);const all=await res.json(),out=[];for(const tx of all.slice(0,req.maxRecords||200)){if(!(tx.vin||[]).some(v=>v.prevout&&v.prevout.scriptpubkey_address===req.address))continue;for(const vout of tx.vout||[]){const to=vout.scriptpubkey_address;if(!to||to===req.address)continue;out.push({chain:'btc',network:'Bitcoin',txid:tx.txid,timestamp:tx.status&&tx.status.block_time||null,from:req.address,to,asset:'BTC',amount:units(vout.value,8),status:tx.status&&tx.status.confirmed?'confirmed':'pending',raw:tx});}}return out;}
+async function scanBitcoin(req){
+  const API='https://blockstream.info/api';
+  const wanted=Math.min(Math.max(Number(req.maxRecords)||200,1),1000);
+  let all=[],lastSeen=null,loops=0;
+  while(all.length<wanted && loops++<45){
+    const path=lastSeen?'/address/'+encodeURIComponent(req.address)+'/txs/chain/'+encodeURIComponent(lastSeen):'/address/'+encodeURIComponent(req.address)+'/txs';
+    const res=await fetch(API+path,{cache:'no-store'});
+    if(!res.ok)throw new Error('Bitcoin API HTTP '+res.status+' after '+all.length+' transactions fetched');
+    const page=await res.json();
+    if(!Array.isArray(page)||!page.length)break;
+    const seen=new Set(all.map(x=>x.txid));
+    const newRows=page.filter(x=>!seen.has(x.txid));
+    if(!newRows.length)break;
+    all.push(...newRows);
+    // Blockstream chain pagination uses the last confirmed transaction.
+    const confirmed=page.filter(x=>x.status?.confirmed);
+    const last=confirmed.at(-1)?.txid;
+    if(!last || last===lastSeen)break;
+    lastSeen=last;
+    if(page.length<25)break;
+  }
+  const out=[];
+  for(const tx of all.slice(0,wanted)){
+    if(!(tx.vin||[]).some(v=>v.prevout&&v.prevout.scriptpubkey_address===req.address))continue;
+    for(const vout of tx.vout||[]){
+      const to=vout.scriptpubkey_address;
+      if(!to||to===req.address)continue;
+      out.push({chain:'btc',network:'Bitcoin',txid:tx.txid,timestamp:tx.status?.block_time||null,from:req.address,to,asset:'BTC',amount:units(vout.value,8),status:tx.status?.confirmed?'confirmed':'pending',raw:tx});
+    }
+  }
+  return out;
+}
 async function evmQuery(params){const u=new URL('https://api.etherscan.io/v2/api');Object.entries(params).forEach(([k,v])=>u.searchParams.set(k,v));const r=await fetch(u);if(!r.ok)throw new Error('Etherscan HTTP '+r.status);const j=await r.json();if(j.status==='0'&&!String(j.message||'').toLowerCase().includes('no transactions'))throw new Error(String(j.result||j.message||'Etherscan API error'));return Array.isArray(j.result)?j.result:[];}
-async function scanEvm(req){if(req.network==='8453')throw new Error('Baseの全アドレス履歴スキャンは公開RPCだけでは列挙できません。下のPDF入金照合で「Resolve Base sources from TxID」を使用してください。Etherscan有料プランは不要です。');if(!req.apiKey)throw new Error('Etherscan API keyが必要です。ブラウザメモリにのみ保持されます。');const c=EVM_CHAINS.find(x=>x.chainId===req.network);const base={chainid:c.chainId,module:'account',address:req.address,startblock:'0',endblock:'999999999',page:'1',offset:String(req.maxRecords||200),sort:'asc',apikey:req.apiKey};const [normal,token]=await Promise.all([evmQuery({...base,action:'txlist'}),evmQuery({...base,action:'tokentx'})]);const a=req.address.toLowerCase(),out=[];for(const t of normal){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:c.symbol,amount:units(t.value,18),status:t.isError==='0'?'confirmed':'unknown',raw:t});}for(const t of token){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:t.tokenSymbol||'TOKEN',amount:units(t.value,t.tokenDecimal),status:'confirmed',raw:t});}return out;}
+async function scanEvm(req){if(req.network==='8453')throw new Error('Baseの全アドレス履歴スキャンは公開RPCだけでは列挙できません。下のPDF入金照合で「Resolve Base sources from TxID」を使用してください。Etherscan有料プランは不要です。');if(!req.apiKey)throw new Error('Etherscan API keyが必要です。ブラウザメモリにのみ保持されます。');const c=EVM_CHAINS.find(x=>x.chainId===req.network);const base={chainid:c.chainId,module:'account',address:req.address,startblock:'0',endblock:'999999999',page:'1',offset:String(req.maxRecords||200),sort:'desc',apikey:req.apiKey};const [normal,token]=await Promise.all([evmQuery({...base,action:'txlist'}),evmQuery({...base,action:'tokentx'})]);const a=req.address.toLowerCase(),out=[];for(const t of normal){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:c.symbol,amount:units(t.value,18),status:t.isError==='0'?'confirmed':'unknown',raw:t});}for(const t of token){if(String(t.from).toLowerCase()!==a||!t.to)continue;out.push({chain:'evm',network:c.name,txid:t.hash,timestamp:Number(t.timeStamp),from:t.from,to:t.to,asset:t.tokenSymbol||'TOKEN',amount:units(t.value,t.tokenDecimal),status:'confirmed',raw:t});}return out;}
 async function rpc(url,method,params){const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});if(!r.ok){
   let detail='';
   try{detail=' '+await r.text();}catch{}
