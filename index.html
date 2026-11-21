@@ -1,5 +1,5 @@
 <!doctype html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Evidence Tracer</title><link rel="stylesheet" href="./src/style.css"></head><body>
-<div class="wrap"><section class="hero"><span class="badge">LOCAL PROCESSING / NO SERVER STORAGE</span><h1>Evidence Tracer</h1><p>Open-source blockchain evidence generator — Case profile: IZAKA-YA</p></section>
+<div class="wrap"><section class="hero"><span class="badge">LOCAL PROCESSING / NO SERVER STORAGE</span><h1>Evidence Tracer</h1><p>Open-source blockchain evidence generator — User-managed cases</p></section>
 <div id="boot-error" class="card danger" style="display:none"></div>
 <section class="card privacy"><h2>Privacy / データの扱い</h2><div class="explain">
 <p>入力したウォレットや検索結果は、Evidence Tracerの独自サーバーには保存しません。照会時には各ブロックチェーンAPIへリクエストします。</p>
@@ -66,24 +66,5 @@
   <div class="explain explain-secondary"><p>※ BTC・ETH・SOL・XRP・USDCなど、異なる資産をひとつの金額には合算していません。</p><p>「Total」は各資産単位の合計です。</p><p>内部交換額は外部からの新規入金として二重計上しません。</p></div>
 </section>
 
-<section class="card no-print" id="policeKit">
- <h2>07 · Police Evidence Pack / 警察提出用資料</h2>
- <div class="explain"><p>2026年8月30日の4件の出金申請を、融資終了記録と対応付けて表示します。</p>
- <p>提出資料の原本ファイルを選択すると、<strong>SHA-256ハッシュ</strong>を計算し、証拠目録を作成します。<span class="sentence-break">以前のEvidenceTracer-Reconciliation JSONを選べば、照合件数も再利用できます。</span><span class="sentence-break">ファイル本体はブラウザ外へアップロードしません。</span></p>
- <p><strong>注意：</strong>これは提出者のための整理資料です。警察による鑑定、被害認定、未着金の証明ではありません。</p></div>
- <h3>出金申請（原本PDF上：2026/09/23時点「送金待」）</h3>
- <div class="results"><table><thead><tr><th>日時 JST</th><th>資産</th><th>元本</th><th>利益（表示）</th><th>申請額</th><th>差額（計算）</th><th>申請先アドレス</th><th>PDF記載の状態</th></tr></thead><tbody id="policeWithdrawals"></tbody></table></div>
- <p class="muted">差額は「融資終了元本＋表示利益−出金申請額」の計算結果です。出金手数料と確定しているものではありません。</p>
- <div class="workflow"><strong>提出用の準備</strong><div class="workflow-steps"><span>① 原本PDF・メールを選択</span><span>② SHA-256を記録</span><span>③ 本人の説明を記入</span><span>④ プレビュー／印刷／JSON出力</span></div></div>
- <label for="policeEvidenceFiles">証拠原本を選択（複数可・保存はハッシュとファイル情報のみ）</label>
- <input id="policeEvidenceFiles" type="file" multiple accept=".pdf,.json,.csv,.txt,.eml,.png,.jpg,.jpeg,.webp,application/pdf,application/json">
- <p class="muted operation-status" id="policeManifestStatus">証拠原本はまだ登録されていません。</p>
- <div class="results"><table><thead><tr><th>番号</th><th>ファイル名</th><th>サイズ</th><th>SHA-256</th><th>記録時刻</th><th>操作</th></tr></thead><tbody id="policeManifest"></tbody></table></div>
- <label for="policeUserStatement">本人の説明・確認事項（未着金の状況／連絡経緯など）</label>
- <textarea id="policeUserStatement" rows="5" placeholder="例：2026年8月30日に4件を出金申請したが、私の認識では受け取っていません。確認したウォレット・連絡履歴・確認日時を記載してください。"></textarea>
- <p class="muted">本人の説明は「本人申告・未検証」と明記されます。入力した説明はサーバーに保存されません。ページを閉じる前にJSONで保存してください。</p>
- <div class="actions"><button class="primary" id="policePreviewButton">提出レポートを更新</button><button id="policePrint">印刷 / PDF保存</button><button id="policeJsonExport">証拠目録＋レポート JSON</button><button id="policeCsvExport">出金申請 CSV</button></div>
-</section>
-<section id="policePreview" class="card police-preview" aria-label="警察提出用レポート"><h2>提出レポート</h2><p class="muted">「提出レポートを更新」を押すと表示されます。</p></section>
-<section class="card"><b>Evidence Tracer v0.8.0</b><p class="muted">Static single-file runtime. Server-side storage: NONE · Analytics: NONE · Wallet connection: NONE.</p></section></div>
-<script src="./app.js" defer></script><script src="./police.js" defer></script></body></html>
+<section class="card"><b>Evidence Tracer v0.8.1</b><p class="muted">Static single-file runtime. Server-side storage: NONE · Analytics: NONE · Wallet connection: NONE.</p></section></div>
+<script src="./app.js" defer></script></body></html>
