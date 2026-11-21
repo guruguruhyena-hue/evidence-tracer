@@ -30,6 +30,8 @@ jobs:
         run: npm run build:vendor
       - name: Runtime syntax checks
         run: npm run syntax:test
+      - name: Reconciliation regression tests
+        run: npm run reconciliation:test
       - name: Privacy checks
         run: npm run privacy:test
       - name: Setup Pages
