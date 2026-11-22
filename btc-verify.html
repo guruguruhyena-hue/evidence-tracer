@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer">
+<title>Bitcoin UTXO Verifier — Evidence Tracer</title>
+<link rel="stylesheet" href="./src/style.css"><link rel="stylesheet" href="./src/report.css"></head>
+<body><main class="wrap">
+<nav class="report-nav"><a href="./index.html">← Evidence Tracer</a>　|　<a href="./tx-verify.html">EVM送信者検証</a>　|　<a href="./report.html">提出用資料</a></nav>
+<header class="hero"><span class="badge">BITCOIN MAINNET · READ-ONLY · CLIENT-SIDE</span><h1>Bitcoin UTXO Verifier</h1><p>TxIDからBitcoinの出力（vout）を調べ、指定アドレスに受信したBTCの数量を確認します。</p></header>
+<section class="card no-print">
+<h2>01 · 検証対象</h2><p>このツールに特定の事件・ウォレット・取引IDは登録されていません。入力情報はEvidence Tracerのサーバーには保存されず、公開Bitcoin APIへ照会されます。</p>
+<div class="grid">
+<div><label for="btcTx">Bitcoin TxID（64桁の16進数）</label><input id="btcTx" spellcheck="false" autocomplete="off" placeholder="Bitcoin transaction hash"></div>
+<div><label for="btcAddress">受信先Bitcoinアドレス</label><input id="btcAddress" spellcheck="false" autocomplete="off" placeholder="bc1… / 1… / 3…"></div>
+</div>
+<div class="grid" style="margin-top:12px">
+<div><label for="btcExpected">照合したい金額（BTC・任意）</label><input id="btcExpected" spellcheck="false" autocomplete="off" inputmode="decimal" placeholder="0.00123456"></div>
+<div><label for="btcApi">照会先</label><select id="btcApi"><option value="auto">自動（mempool.space → Blockstream）</option><option value="mempool">mempool.space</option><option value="blockstream">Blockstream</option></select></div>
+</div>
+<div class="actions"><button class="primary" id="btcQuery" type="button">取引を照会する</button><button id="btcExport" type="button" disabled>検証結果JSONを保存</button></div>
+<p id="btcStatus" class="operation-status" role="status">TxIDと受信先アドレスを入力してください。</p>
+</section>
+<section class="card"><h2>02 · 取引・受信結果</h2><div id="btcSummary" class="explain">まだ照会していません。</div>
+<h2>03 · Transaction Outputs（vout）</h2>
+<div class="results"><table><thead><tr><th>vout</th><th>受信アドレス</th><th>BTC数量</th><th>判定</th></tr></thead><tbody id="btcOutputs"></tbody></table></div>
+</section>
+<section class="card"><h2>確認の限界とプライバシー</h2><p>各voutの受取額を確認できますが、ブロックチェーン記録だけでウォレット管理者や取引所の出金実行者の身元は特定できません。複数出力があれば、入力合計やお釣りを受信額に加算しません。</p>
+<p>照会先の第三者APIにはTxIDとIPアドレス等が伝わる可能性があります。APIがアクセス制限・CORSで失敗しても、取引が存在しない証拠にはなりません。取得したデータは保存ボタンを押した場合のみ端末へダウンロードされます。秘密鍵・シードフレーズは不要です。</p></section>
+</main><script src="./btc-verify.js?v=20261122-public-1" defer></script></body></html>
