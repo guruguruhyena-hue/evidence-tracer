@@ -130,5 +130,41 @@ function fromPdfHistory(rows){
  }
  return {rows:result,warnings};
 }
-root.IzkFlow={FIELDS,TYPES,parseDecimal,add,fmt,sum,validate,reconcile,fromPdfHistory};
+const JOURNAL_KIND={
+ external_deposit_reported:'deposit',
+ internal_swap_out:'exchange_out',
+ internal_swap_in:'exchange_in',
+ lend_start:'lending_start',
+ lend_end_principal:'lending_end',
+ lend_interest:'lending_profit',
+ withdraw_completed_record:'withdrawal_sent',
+ withdraw_pending_internal:'withdrawal_pending'
+};
+function fromAuditJournal(sourceRows){
+ if(!Array.isArray(sourceRows)||!sourceRows.length)throw Error('空の統合台帳です');
+ const records=[];
+ for(let i=0;i<sourceRows.length;i++){
+  const row=sourceRows[i],kind=String(row.kind||'').trim();
+  if(!JOURNAL_KIND[kind])throw Error('未対応の統合台帳kind（'+(i+1)+'行）: '+kind);
+  const asset=String(row.asset||'').toUpperCase().trim();
+  const amount=String(row.raw_amount||'').trim();
+  const feeOriginal=String(row.reported_fee||'').trim();
+  // Fee annotations such as "0 BTC" are metadata, not extra debits.
+  const feeMatch=feeOriginal.match(/^([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?\d+)?)(?:\s+([A-Z0-9]{2,12}))?$/i);
+  if(feeOriginal&&!feeMatch)throw Error('報告手数料の解析に失敗: '+(row.id||i+1));
+  const fee=feeMatch?.[1]||'0';
+  const feeAsset=feeMatch?.[2]||asset;
+  const type=JOURNAL_KIND[kind];
+  records.push({
+   id:row.id||'AUDIT-'+(i+1),datetime_jst:row.datetime_jst||'',
+   type,asset,amount,fee: type==='exchange_in'||type==='exchange_out'?'0':fee,
+   fee_asset:feeAsset,pair_id:kind.startsWith('internal_swap_')?String(row.link_id||''):'',
+   status:String(row.classification||'service_record'),txid:kind.startsWith('withdraw_')?String(row.link_id||''):'',
+   source:row.source||'',source_page:row.source_ref||'',
+   notes:row.description||''
+  });
+ }
+ return records;
+}
+root.IzkFlow={FIELDS,TYPES,parseDecimal,add,fmt,sum,validate,reconcile,fromPdfHistory,fromAuditJournal};
 })(globalThis);
