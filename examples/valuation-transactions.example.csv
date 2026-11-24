@@ -1,0 +1,3 @@
+datetime_jst,asset,amount,txid,address,category,notes,id
+2024/01/05 12:00,BTC,0.01,,,onchain_reported,Fictional example only,EXAMPLE-001
+2024/01/06 16:30,ETH,0.25,,,review,Review whether this is a genuine external deposit,EXAMPLE-002
