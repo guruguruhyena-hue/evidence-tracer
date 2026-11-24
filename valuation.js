@@ -101,27 +101,81 @@ function selectedDefault(r){return r.category==='onchain_reported' || !r.categor
 const getPrice=r=>{if(positiveDecimal(r.manualPrice))return {price:r.manualPrice,source:r.manualSource||'手動入力',sourceUrl:r.manualSourceUrl||'',sourceSha256:r.manualSourceSha256||'',evidenceRef:r.manualEvidenceRef||'',method:r.manualPriceMethod||'DOCUMENTED_MANUAL_QUOTE',date:UTCday(r.datetime_jst)};const d=UTCday(r.datetime_jst),v=quotes.get(priceKey(r.asset,d));return v?{...v,date:d}:null};
 function setStatus(msg){$('progress').textContent=msg}
 function updateFilters(){const c=$('coinFilter'),old=c.value;c.textContent='';let opt=document.createElement('option');opt.value='';opt.textContent='すべて';c.append(opt);[...new Set(rows.map(r=>r.asset))].sort().forEach(a=>{let o=document.createElement('option');o.value=o.textContent=a;c.append(o)});c.value=old}
-let summaryGeneration=0;
+// Exact quantity totals: align decimal scales without converting amounts into JS Number.
+function addDecimalToAccumulator(acc, raw){
+ const d=decimalParts(raw);
+ if(d.scale>acc.scale){acc.value*=10n**BigInt(d.scale-acc.scale);acc.scale=d.scale;}
+ acc.value+=d.value*10n**BigInt(acc.scale-d.scale);
+}
+function decimalAccumulatorString(acc){
+ const digits=acc.value.toString();
+ if(!acc.scale)return digits;
+ const padded=digits.padStart(acc.scale+1,'0');
+ return (padded.slice(0,-acc.scale)+'.'+padded.slice(-acc.scale)).replace(/\.?0+$/,'')||'0';
+}
+function newAssetAggregate(asset){return {asset,all:0,included:0,priced:0,unpriced:0,excluded:0,quantity:{value:0n,scale:0},pricedQuantity:{value:0n,scale:0},cents:0n}}
+let summaryGeneration=0,latestAssetSummary=[];
+function renderAssetSummary(summaries,included,priced,total,excluded){
+ latestAssetSummary=summaries;
+ $('summaryTotalYen').textContent=priced?jpyCents(total):'未計算';
+ $('summaryAssets').textContent=summaries.length+'銘柄';
+ $('summaryAssetNames').textContent=summaries.map(x=>x.asset).join(' / ')||'CSV未読込';
+ $('summaryCoverage').textContent=included?Math.round(priced/included*1000)/10+'%':'—';
+ $('summaryPending').textContent=(included-priced)+'件 / '+excluded+'件';
+ const body=$('assetSummaryRows');body.textContent='';
+ if(!summaries.length){
+  const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=8;td.textContent='CSVを読み込むと集計を表示します。';tr.append(td);body.append(tr);return;
+ }
+ const frag=document.createDocumentFragment();
+ for(const a of summaries){
+  const tr=document.createElement('tr');
+  for(const val of [a.asset,a.all,a.included,decimalAccumulatorString(a.quantity),decimalAccumulatorString(a.pricedQuantity),a.unpriced,a.excluded,a.priced?jpyCents(a.cents):'未計算']){
+   const td=document.createElement('td');td.textContent=String(val);tr.append(td);
+  }
+  frag.append(tr);
+ }
+ body.append(frag);
+}
 function scheduleSummary(){
  const generation=++summaryGeneration;
- let pos=0,included=0,priced=0,total=0n;
+ let pos=0,included=0,priced=0,excluded=0,total=0n;const byAsset=new Map();
  $('totalRows').textContent=nfmt(rows.length);
  $('totalYen').textContent='集計中…';
+ $('summaryTotalYen').textContent='集計中…';
  function step(){
   if(generation!==summaryGeneration)return;
   const stop=Math.min(pos+4000,rows.length);
   for(;pos<stop;pos++){
-   const r=rows[pos];if(!r.included||!positiveDecimal(r.original_amount))continue;
-   included++;const p=getPrice(r);if(p){priced++;total+=centsOf(r.original_amount,p.price);}
+   const r=rows[pos];const asset=r.asset||'未設定';
+   if(!byAsset.has(asset))byAsset.set(asset,newAssetAggregate(asset));
+   const a=byAsset.get(asset);a.all++;
+   if(!r.included||!positiveDecimal(r.original_amount)){a.excluded++;excluded++;continue;}
+   a.included++;included++;addDecimalToAccumulator(a.quantity,r.original_amount);
+   const p=getPrice(r);
+   if(p){
+    const cents=centsOf(r.original_amount,p.price);
+    a.priced++;priced++;a.cents+=cents;total+=cents;
+    addDecimalToAccumulator(a.pricedQuantity,r.original_amount);
+   }else{a.unpriced++;}
   }
   if(pos<rows.length){setTimeout(step,0);return;}
   $('includedRows').textContent=nfmt(included);
   $('pricedRows').textContent=priced+' / '+included;
   $('totalYen').textContent=priced?jpyCents(total):'未計算';
   $('totalContext').textContent=priced===included&&priced?'選択対象の全件に単価あり（各行0.01円単位で四捨五入）':'価格のない評価対象は含まない部分計（損害額ではない）';
+  renderAssetSummary([...byAsset.values()].sort((a,b)=>a.asset.localeCompare(b.asset)),included,priced,total,excluded);
  }
  step();
 }
+$('exportSummary').addEventListener('click',()=>{
+ if(!latestAssetSummary.length)return setStatus('集計対象がありません。先にCSVを読み込んでください。');
+ const records=latestAssetSummary.map(a=>({asset:a.asset,total_rows:a.all,valuation_rows:a.included,
+  included_quantity:decimalAccumulatorString(a.quantity),priced_quantity:decimalAccumulatorString(a.pricedQuantity),
+  priced_rows:a.priced,unpriced_rows:a.unpriced,excluded_rows:a.excluded,
+  estimated_jpy_priced_only:centsString(a.cents),
+  note:'Only included rows with known historical prices; not legal damages'}));
+ dl('asset_valuation_summary.csv',makeCSV(records,Object.keys(records[0])));
+});
 function render(){scheduleSummary();
 const term=$('filter').value.toLowerCase(),asset=$('coinFilter').value,st=$('stateFilter').value;let view=rows.filter(r=>(!asset||r.asset===asset)&&(!term||[r.id,r.asset,r.datetime_jst,r.txid,r.notes,r.address].join(' ').toLowerCase().includes(term))&&(!st||(st==='priced'&&!!getPrice(r))||(st==='unpriced'&&!getPrice(r))||(st==='included'&&r.included)||(st==='excluded'&&!r.included)));
 const pageCount=Math.max(1,Math.ceil(view.length/PAGE_SIZE));currentPage=Math.min(currentPage,pageCount-1);const start=currentPage*PAGE_SIZE;const visible=view.slice(start,start+PAGE_SIZE);const tbody=$('tbody');tbody.textContent='';const fragment=document.createDocumentFragment();visible.forEach(r=>{const tr=document.createElement('tr');if(!r.included)tr.className='dim';function td(s,className){const x=document.createElement('td');x.textContent=s;if(className)x.className=className;tr.append(x);return x}
