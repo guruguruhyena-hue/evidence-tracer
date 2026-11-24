@@ -8,42 +8,46 @@ const normalizeAsset=s=>String(s||'').toUpperCase().trim().replace(/\((ERC20|BEP
 const isDecimal=s=>/^(?:0|[0-9]+)(?:\.[0-9]+)?$/.test(String(s||'').replace(/,/g,''));
 const dateOK=s=>/^\d{4}\/\d\d\/\d\d \d\d:\d\d$/.test(s)&&!Number.isNaN(Date.parse(s.replace(/\//g,'-').replace(' ','T')+':00+09:00'));
 function parsePdfPages(pages,filename,sha){
- const records=[],warnings=[];let candidateCount=0;
+ const records=[],warnings=[];let candidateCount=0,compact='',pageRanges=[];
+ // Printed browser PDFs may split one transaction over two pages. A new page
+ // starts with a print timestamp and document title, not a transaction date.
  for(const page of pages){
-  // Tolerate PDF.js splitting Japanese into individual glyphs.
-  const compact=String(page.text||'').replace(/\s+/g,'').replace(/\u00a0/g,'');
-  const dates=[...compact.matchAll(/20\d{2}\/\d{2}\/\d{2}\d{2}:\d{2}/g)];
-  for(let k=0;k<dates.length;k++){
-   const match=dates[k],start=match.index,stop=k+1<dates.length?dates[k+1].index:compact.length;
-   const body=compact.slice(start+match[0].length,stop);
-   if(body.includes('履歴｜IZAKA-YA')||body.slice(0,35).includes('履歴|IZAKA-YA'))continue;
-   const dt=match[0].slice(0,10)+' '+match[0].slice(10);
-   const amountMatch=body.match(/([\d,]+(?:\.\d+)?)([A-Za-z][A-Za-z0-9]*)(?:\([^)]*\))?(?:を入金しました|を送金しました|の融資が終了しました|の融資を開始しました|を交換しました)/);
-   const kind=body.includes('を入金しました')?'deposit':
-     body.includes('を送金しました')?'withdrawal_sent':
-     body.includes('の融資を開始しました')?'lending_start':
-     body.includes('の融資が終了しました')?'lending_end':
-     body.includes('を交換しました')?'exchange':'';
-   if(!kind)continue;
-   candidateCount++;
-   if(!dateOK(dt)||!amountMatch||!isDecimal(amountMatch[1])){warnings.push('p'+page.page+' '+dt+': 数量または日時の解析不可');continue;}
-   const amount=amountMatch[1].replace(/,/g,''),asset=normalizeAsset(amountMatch[2]);
-   const address=(body.match(/(?:受信Walletアドレス|送信Walletアドレス|送信先Walletアドレス|送金先Walletアドレス|送金先アドレス):([^]+?)(?=受信宛先タグ:|送信宛先タグ:|TxID:|20\d{2}\/|$)/)||[])[1]||'';
-   const tag=(body.match(/(?:受信宛先タグ|送信宛先タグ):([^]+?)(?=TxID:|20\d{2}\/|$)/)||[])[1]||'';
-   const tx=(body.match(/TxID:([^]+?)(?=20\d{2}\/|$)/)||[])[1]||'';
-   const txid=tx.trim().split(/(?=CryptoPanda|履歴)/)[0].trim().replace(/^-$/,'');
-   const yieldMatch=body.match(/利益は([\d,]+(?:\.\d+)?)([A-Za-z][A-Za-z0-9]*)です/);
-   const confidence=(kind==='deposit'||kind==='withdrawal_sent')&&!txid?'REVIEW_MISSING_TXID':'PARSED_REVIEW_REQUIRED';
-   const record={
-    id:'IZK-PDF-'+String(records.length+1).padStart(5,'0'),
-    datetime_jst:dt,type:kind,asset,amount,txid,address:address.trim(),destination_tag:tag.trim(),
-    category:kind==='deposit'?'review':kind,
-    notes:yieldMatch?'融資終了・記載利益 '+yieldMatch[1].replace(/,/g,'')+' '+normalizeAsset(yieldMatch[2]):'',
-    source:filename,source_page:String(page.page),source_sha256:sha,confidence
-   };
-   records.push(record);
-  }
+  const c=String(page.text||'').replace(/\s+/g,'').replace(/\u00a0/g,'')
+   .replace(/20\d{2}\/\d{2}\/\d{2}\d{2}:\d{2}履歴｜IZAKA-YA/g,'');
+  const start=compact.length;compact+=c;
+  pageRanges.push({page:page.page,start,end:compact.length});
  }
+ const pageAt=pos=>pageRanges.find(p=>pos>=p.start&&pos<p.end)?.page||pageRanges.at(-1)?.page||1;
+ const dates=[...compact.matchAll(/20\d{2}\/\d{2}\/\d{2}\d{2}:\d{2}/g)];
+ for(let k=0;k<dates.length;k++){
+  const match=dates[k],start=match.index,stop=k+1<dates.length?dates[k+1].index:compact.length;
+  const body=compact.slice(match.index+match[0].length,stop);
+  const dt=match[0].slice(0,10)+' '+match[0].slice(10);
+  const kind=body.includes('を入金しました')?'deposit':
+    body.includes('を送金しました')?'withdrawal_sent':
+    body.includes('の融資を開始しました')?'lending_start':
+    body.includes('の融資が終了しました')?'lending_end':
+    body.includes('を交換しました')?'exchange':'';
+  if(!kind)continue;
+  candidateCount++;
+  const amountMatch=body.match(/([\d,]+(?:\.\d+)?)([A-Za-z][A-Za-z0-9]*)(?:\([^)]*\))?(?:を入金しました|を送金しました|の融資が終了しました|の融資を開始しました|を交換しました)/);
+  if(!dateOK(dt)||!amountMatch||!isDecimal(amountMatch[1])){warnings.push('p'+pageAt(start)+' '+dt+': 数量または日時の解析不可');continue;}
+  const amount=amountMatch[1].replace(/,/g,''),asset=normalizeAsset(amountMatch[2]);
+  const address=(body.match(/(?:受信Walletアドレス|送信Walletアドレス|送信先Walletアドレス|送金先Walletアドレス|送金先アドレス):([^]+?)(?=受信宛先タグ:|送信宛先タグ:|TxID:|20\d{2}\/|$)/)||[])[1]||'';
+  const tag=(body.match(/(?:受信宛先タグ|送信宛先タグ):([^]+?)(?=TxID:|20\d{2}\/|$)/)||[])[1]||'';
+  const tx=(body.match(/TxID:([^]+?)(?=20\d{2}\/|$)/)||[])[1]||'';
+  const txid=tx.trim().split(/(?=CryptoPanda|履歴)/)[0].trim().replace(/^-$/,'');
+  const yieldMatch=body.match(/利益は([\d,]+(?:\.\d+)?)([A-Za-z][A-Za-z0-9]*)です/);
+  const confidence=(kind==='deposit'||kind==='withdrawal_sent')&&!txid?'REVIEW_MISSING_TXID':'PARSED_REVIEW_REQUIRED';
+  records.push({
+   id:'IZK-PDF-'+String(records.length+1).padStart(5,'0'),
+   datetime_jst:dt,type:kind,asset,amount,txid,address:address.trim(),destination_tag:tag.trim(),
+   category:kind==='deposit'?'review':kind,
+   notes:yieldMatch?'融資終了・記載利益 '+yieldMatch[1].replace(/,/g,'')+' '+normalizeAsset(yieldMatch[2]):'',
+   source:filename,source_page:String(pageAt(start)),source_sha256:sha,confidence
+  });
+ }
+ if(records.length!==candidateCount)warnings.push('候補'+candidateCount+'件に対し抽出'+records.length+'件。欠落レコードを原本確認してください。');
  return {records,warnings,candidateCount};
 }
 function parseCsv(text){
