@@ -1,3 +1,9 @@
+### Real-record reconciliation compatibility (November 2026)
+
+The **[four-stream reconciliation page](./flow-reconcile.html)** also accepts an optional *pre-existing audit journal CSV* containing `kind`, `asset`, `raw_amount`, and `wallet_delta`. This is an alternative to uploading separate deposit/exchange/lending/withdrawal files. It maps eight documented journal kinds into the standardized flow types and preserves zero-quantity deposit records, exact scientific-notation amounts, linked swap pairs, and pending withdrawal fee *quotes*.
+
+Optional merchant-conversion/return adjustment CSV supports only `merchant_out`, `merchant_refund`, `adjustment_in`, and `adjustment_out`; these are separately sourced accounting adjustments, **not independently verified on-chain transfers**. Without them, an apparent service balance may be incomplete. Never upload private case journals or merchant evidence to this **public** code repository; select files in your local browser.
+
 ## Beginner guide: PDF to chain evidence (Japanese)
 
 **[Open the public, one-page illustrated user guide](./guide.html)** · [GitHub Pages guide](https://guruguruhyena-hue.github.io/evidence-tracer/guide.html)
