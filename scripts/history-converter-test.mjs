@@ -44,8 +44,8 @@ assert.ok(recon.some(x=>x.asset==='XRP'&&x.deposits===1));
 console.log('History PDF / CSV normalizer and column mapping tests passed.');
 
 const splitRecord=p.parsePdfPages([
- {page:1,text:'2025/10/02 09:00\\n5 BTC を入金しました\\nTxID : FIRST\\n2025/10/01 11:00\\n'},
- {page:2,text:'2026/09/02 11:52 履歴｜IZAKA-YA\\n218.645344 USDT (ERC20) を入金しました\\n受信Walletアドレス : 0x123\\nTxID : SECOND\\n2025/09/30 10:00\\n1 ETH を入金しました\\nTxID : THIRD'}
+ {page:1,text:'2025/10/02 09:00\n5 BTC を入金しました\nTxID : FIRST\n2025/10/01 11:00\n'},
+ {page:2,text:'2026/09/02 11:52 履歴｜IZAKA-YA\n218.645344 USDT (ERC20) を入金しました\n受信Walletアドレス : 0x123\nTxID : SECOND\n2025/09/30 10:00\n1 ETH を入金しました\nTxID : THIRD'}
 ],'history.pdf','sha-test');
 assert.equal(splitRecord.records.length,3,'Transaction split by page border should be preserved');
 assert.equal(splitRecord.records[1].asset,'USDT');
