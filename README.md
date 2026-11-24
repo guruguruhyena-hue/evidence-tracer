@@ -59,6 +59,16 @@ The **primary** valuation action is now **共有価格DBと照合**. It reads pu
 
 Price provenance, refresh rules, third-party usage terms and the precise dataset layout are documented in [`prices/README.md`](./prices/README.md). These market prices are third-party information; this repository's MIT license applies to its code, not automatically to underlying market data.
 
+## IZAKA-YA history PDF / CSV converter (local browser)
+Open [`history-import.html`](./history-import.html) to import a **user-supplied IZAKA-YA account-history PDF or CSV**. The converter uses the already-bundled PDF.js text extractor (not OCR), never uploads the original, calculates SHA-256 for the source file, and preserves its filename and source page when producing normalized rows.
+
+- Recognizes textual records using *content*, not filename: deposit, sent withdrawal, lending start and end, and basic exchange statements. Unsupported layouts and image-only PDF scans need manual review.
+- Supports two independent input files, editable comma-separated CSV **column order**, CSV/JSON downloads, an **import format for the JPY valuation page** (deposits only), and a preliminary per-asset deposit versus withdrawal-history comparison.
+- **Important:** a PDF filename that says "withdrawal" can still contain *deposit* tab records; classify using the visible content. A "sent" label is only a provider assertion, **not independent wallet receipt verification**.
+- Cross-page printed entries are reconstructed by concatenating page text and removing repeated print-only headers. On the source 6-page deposit and 9-page lending PDF layouts, the earlier page-wise parser skipped 2 and 5 entries respectively; tests now cover the page-break case. Still review the original count and each extracted record.
+- Source documents are processed only in your browser. Cross-file duplicate SHA-256 is rejected to avoid double-counting, but different files may still contain overlapping events. The simple comparison deliberately does **not** claim final customer balances or legal damages: internal exchanges, accrued interest, network fees, refunds, and partial transfers must be reconciled separately.
+- Pages fetched from the service website should first be saved/printed as local **PDF** files and loaded in the importer; direct URL scraping is not required, and browser cross-origin restrictions may prohibit it. Printed/scanned image PDFs require OCR elsewhere before import.
+
 ## Local use
 No build step is required. Serve the repository as static files:
 
