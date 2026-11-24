@@ -12,7 +12,7 @@ function parsePdfPages(pages,filename,sha){
  // Printed browser PDFs may split one transaction over two pages. A new page
  // starts with a print timestamp and document title, not a transaction date.
  for(const page of pages){
-  const c=String(page.text||'').replace(/\s+/g,'').replace(/\u00a0/g,'')
+  const c=String(page.text||'').replace(/https?:\/\/[^\r\n]*/g,'').replace(/\s+/g,'').replace(/\u00a0/g,'')
    .replace(/20\d{2}\/\d{2}\/\d{2}\d{2}:\d{2}履歴｜IZAKA-YA/g,'');
   const start=compact.length;compact+=c;
   pageRanges.push({page:page.page,start,end:compact.length});
@@ -37,7 +37,7 @@ function parsePdfPages(pages,filename,sha){
   const tag=(body.match(/(?:受信宛先タグ|送信宛先タグ):([^]+?)(?=TxID:|20\d{2}\/|$)/)||[])[1]||'';
   const tx=(body.match(/TxID:([^]+?)(?=20\d{2}\/|$)/)||[])[1]||'';
   const txid=tx.trim().split(/(?=CryptoPanda|履歴)/)[0].trim().replace(/^-$/,'');
-  const yieldMatch=body.match(/利益は([\d,]+(?:\.\d+)?)([A-Za-z][A-Za-z0-9]*)です/);
+  const yieldMatch=body.match(/利益は([\d,]+(?:\.\d+)?)([A-Za-z][A-Za-z0-9]*)(?:\([^)]*\))?です/);
   const confidence=(kind==='deposit'||kind==='withdrawal_sent')&&!txid?'REVIEW_MISSING_TXID':'PARSED_REVIEW_REQUIRED';
   records.push({
    id:'IZK-PDF-'+String(records.length+1).padStart(5,'0'),
