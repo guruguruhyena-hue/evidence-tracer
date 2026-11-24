@@ -78,3 +78,22 @@ const rr=provisionalEvents.filter(m=>m.type==='batch').flatMap(m=>m.rows);
 assert.equal(rr.length,4);
 assert.deepEqual(Array.from(rr,r=>r.included),[true,true,false,false]);
 console.log('Provisional review and explicit exclusion defaults passed');
+
+const depositEvents=[],depositSelf={postMessage:m=>depositEvents.push(m)};
+vm.runInNewContext(workerCode,{
+ self:depositSelf,TextDecoder,Blob,setTimeout,BigInt,Date,Number,Math,Uint8Array,String,Array,Object,RegExp,Error
+},{filename:'valuation-worker-deposit.js'});
+const depositCsv=[
+ 'datetime_jst,asset,amount,category,included',
+ '2024/12/26 23:02,USDC,10,deposit,',
+ '2025/01/16 18:12,BTC,0.1,deposit,',
+ '2025/01/16 18:12,ETH,1,service_credit,',
+ '2025/01/16 18:12,XRP,0,deposit,',
+ '2025/01/16 18:12,SOL,2,deposit,no',
+ '2025/01/16 18:12,OP,3,review,'
+].join('\\n')+'\\n';
+await depositSelf.onmessage({data:{type:'import',file:new Blob([depositCsv]),id:'rows'}});
+const depositRows=depositEvents.filter(m=>m.type==='batch').flatMap(m=>m.rows);
+assert.equal(depositRows.length,6);
+assert.deepEqual(Array.from(depositRows,r=>r.included),[true,true,false,false,false,true]);
+console.log('Deposit classification and explicit exclusion test passed');
