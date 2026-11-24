@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Checkout public code
         uses: actions/checkout@v4
+      - name: Check valuation JavaScript syntax
+        run: node --check valuation.js
       - name: Prepare static site
         run: |
           mkdir -p _site
