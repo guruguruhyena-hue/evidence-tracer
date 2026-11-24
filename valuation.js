@@ -139,7 +139,28 @@ $('filePrice').addEventListener('change',async e=>{const f=e.target.files[0];if(
 $('prevPage').addEventListener('click',()=>{if(currentPage>0){currentPage--;render()}});
 $('nextPage').addEventListener('click',()=>{currentPage++;render()});
 ['filter','coinFilter','stateFilter'].forEach(x=>$(x).addEventListener('input',render));
-$('fetchPrices').addEventListener('click',async()=>{if(loadBusy){setStatus('CSVを解析中です。上部に「CSV読込完了」が出てから価格取得してください。');return}if(!rows.length){setStatus('取引CSVをまだ正常に読み込めていません。「取引CSVを読み込む」でCSVを選択し、上の「CSV読込完了：○件」を確認してください。Worker失敗の場合はエラーが表示されます。');return}const symbols=[...new Set(rows.map(r=>r.asset))].filter(a=>!['IZKY','AKC'].includes(a));if(symbols.length>MAX_SYMBOLS){setStatus('価格APIの負荷を抑えるため100通貨まで一括照会できます。手動価格CSVなら制限はありません。');return}let last=0;for(const r of rows){const ms=Date.parse(UTCday(r.datetime_jst)+'T00:00:00Z');if(Number.isFinite(ms)&&ms>last)last=ms;}if(!last){setStatus('有効な日時がありません');return;}let finish=Math.floor(last/1000)+86400,success=0,fail=[];const btn=$('fetchPrices');btn.disabled=true;for(let i=0;i<symbols.length;i++){const a=symbols[i];setStatus(`公開価格APIに照会中 ${i+1}/${symbols.length}：${a}（取得できた行だけ評価）`);try{const url=`https://min-api.cryptocompare.com/data/v2/histoday?fsym=${encodeURIComponent(a)}&tsym=JPY&limit=950&toTs=${finish}&extraParams=EVIDENCE_TRACER_VALUATION`;const res=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(data.Response==='Error')throw Error(data.Message||'API error');const bars=data.Data?.Data;if(!Array.isArray(bars)||!bars.length)throw Error('日足データなし');let ct=0;for(const bar of bars){if(Number(bar.close)>0&&Number.isFinite(bar.time)){const d=new Date(bar.time*1000).toISOString().slice(0,10);quotes.set(priceKey(a,d),{price:String(bar.close),source:'CryptoCompare histoday JPY UTC daily close',sourceUrl:url,sourceSha256:'',evidenceRef:'',method:'UTC_DAILY_CLOSE',timestamp:new Date().toISOString()});ct++}}if(ct)success++;else fail.push(a+':有効価格なし')}catch(e){fail.push(a+':'+String(e.message||e))}render()}btn.disabled=false;setStatus(`価格API：${success}/${symbols.length}通貨に価格データ取得。${fail.length?'要確認 '+fail.join(' / '):'処理完了'}。AKC・IZKYは個別調査・手動単価が必要です。`)});
+$('fetchPrices').addEventListener('click',async()=>{
+ if(loadBusy){setStatus('CSVの解析完了後に実行してください');return;}
+ if(!rows.length){setStatus('先に取引CSVを読み込んでください。解析完了の件数が表示されます。');return;}
+ const engine=globalThis.HistoricalPriceSources;
+ if(!engine){setStatus('新価格モジュールの読み込みに失敗しました。ブラウザを強制更新してください。');return;}
+ const assets=[...new Set(rows.map(r=>r.asset))].filter(Boolean);
+ if(assets.length>MAX_SYMBOLS){setStatus('100種類を超える通貨は価格CSVを使用してください');return;}
+ const dates=[...new Set(rows.map(r=>UTCday(r.datetime_jst)).filter(Boolean))];
+ const btn=$('fetchPrices');btn.disabled=true;setStatus('BinanceとFrankfurterの過去価格を照会します（参考評価額）。');
+ try{
+  const {output,errors}=await engine.obtain({assets,dates,onProgress:setStatus});
+  for(const [key,value] of output)quotes.set(key,value);
+  render();
+  const matched=assets.filter(asset=>[...output.keys()].some(key=>key.startsWith(asset+'|')));
+  setStatus('歴史価格取得：'+matched.length+'/'+assets.length+'通貨、対象日の価格 '+output.size+'件。' +
+    (errors.length?' 未取得／要確認 '+errors.join(' / '):'')+
+    '。※ USDT建て日足×USD/JPY参照為替の推計。取引時点の円建て約定価格ではありません。');
+ }catch(e){
+  const err=String(e?.message||e);
+  setStatus('価格取得に失敗：'+err+'。GitHub Pagesから外部APIへ通信できない場合、価格CSVから取り込んでください。');
+ }finally{btn.disabled=false;}
+});
 $('export').addEventListener('click',async()=>{if(!rows.length)return;
  const fields=ValuationAudit.COLS;
  const btn=$('export');btn.disabled=true;
