@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
-START = date(2025, 1, 1)
+START = date(2024, 1, 1)
 END = datetime.now(timezone.utc).date() - timedelta(days=1)
 PAIRS = {
     "BTC": "BTCUSDT", "ETH": "ETHUSDT", "SOL": "SOLUSDT",
