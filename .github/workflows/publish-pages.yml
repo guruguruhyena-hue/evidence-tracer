@@ -6,6 +6,7 @@ on:
     paths:
       - "index.html"
       - "valuation.html"
+      - "valuation.js"
       - "report.html"
       - "src/**"
       - "vendor/**"
@@ -35,6 +36,7 @@ jobs:
         run: |
           mkdir -p _site
           cp ./*.html _site/
+          cp valuation.js _site/
           test -d src && cp -R src _site/ || true
           test -d vendor && cp -R vendor _site/ || true
           test -f app.js && cp app.js _site/ || true
