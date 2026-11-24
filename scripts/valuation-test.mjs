@@ -25,3 +25,28 @@ assert.equal(rows[1].notes,'said "yes"');
 assert.equal(rows[1].amount,'0.0000000000000000001');
 assert.equal(events.at(-1).type,'done');
 console.log('Valuation worker and BigInt decimal tests passed');
+
+const priceSource=readFileSync(new URL('../historical-price-sources.js',import.meta.url),'utf8');
+const recorded=[];
+const fakeFetch=async url=>{
+ recorded.push(url);
+ if(url.includes('frankfurter.dev'))return {ok:true,json:async()=>({rates:{'2025-01-01':{JPY:150.5},'2025-01-02':{JPY:151}}})};
+ if(url.includes('/klines'))return {ok:true,json:async()=>[
+  [Date.parse('2025-01-01T00:00:00Z'),'0','0','0','100000.00'],
+  [Date.parse('2025-01-02T00:00:00Z'),'0','0','0','101000.00']
+ ]};
+ throw Error('Unexpected provider '+url);
+};
+const priceGlobal={};
+const prices=vm.runInNewContext(priceSource+';globalThis.HistoricalPriceSources',{
+ globalThis:priceGlobal,fetch:fakeFetch,AbortSignal:{timeout:()=>undefined},Date,Math,BigInt,String,Number,Map,Set,Error,Array,RegExp
+}) ?? priceGlobal.HistoricalPriceSources;
+assert.equal(prices.decimalProduct('0.1','0.2'),'0.02');
+const sample=await prices.obtain({assets:['BTC','USDT','AKC'],dates:['2025-01-01','2025-01-02']});
+assert.equal(sample.output.get('BTC|2025-01-01').price,'15050000');
+assert.equal(sample.output.get('USDT|2025-01-02').price,'151');
+assert.equal(sample.errors.length,1);
+assert.equal(sample.output.get('BTC|2025-01-01').method,'USDT_PAIR_DAILY_CLOSE_X_USDJPY_REFERENCE');
+assert.ok(recorded.some(x=>x.includes('data-api.binance.vision')));
+assert.ok(recorded.some(x=>x.includes('frankfurter.dev')));
+console.log('Historical price approximation and provenance tests passed');
