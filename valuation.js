@@ -140,6 +140,27 @@ $('prevPage').addEventListener('click',()=>{if(currentPage>0){currentPage--;rend
 $('nextPage').addEventListener('click',()=>{currentPage++;render()});
 ['filter','coinFilter','stateFilter'].forEach(x=>$(x).addEventListener('input',render));
 $('fetchPrices').addEventListener('click',async()=>{
+ if(loadBusy)return setStatus('CSV読込完了後に共有価格DBを照合してください');
+ if(!rows.length)return setStatus('先に取引CSVを読み込んでください');
+ const engine=globalThis.SharedPriceDatabase;
+ if(!engine)return setStatus('共有価格DBのプログラムが未配信です。ブラウザを強制再読み込みしてください');
+ const btn=$('fetchPrices'),assets=[...new Set(rows.map(r=>r.asset))];
+ const dates=[...new Set(rows.map(r=>UTCday(r.datetime_jst)).filter(Boolean))];
+ btn.disabled=true;setStatus('共有価格データベースを照合中（取引CSVは外部に送信しません）…');
+ try{
+  const {output,errors,manifest}=await engine.obtain({assets,dates,onProgress:setStatus});
+  for(const [key,item] of output)quotes.set(key,item);
+  render();
+  const supported=assets.filter(a=>engine.SUPPORTED.has(a));
+  const covered=supported.filter(a=>[...output.keys()].some(k=>k.startsWith(a+'|')));
+  setStatus('共有DB：'+output.size+'件の過去レートを照合。対象8銘柄中 '+covered.length+'銘柄に一致。更新：'+(manifest.generated_at_utc||'不明')+
+   (errors.length?'／未収録：'+errors.slice(0,20).join(' / '):'')+
+   '。JPYはUSDT建て終値×参考USD/JPYで計算した概算値です。');
+ }catch(e){
+  setStatus('共有価格DBを読み込めません：'+String(e?.message||e)+'。DBの初回生成・Pages配信状況を確認してください。必要なら「直接API取得」で試せます。');
+ }finally{btn.disabled=false;}
+});
+$('fetchLivePrices').addEventListener('click',async()=>{
  if(loadBusy){setStatus('CSVの解析完了後に実行してください');return;}
  if(!rows.length){setStatus('先に取引CSVを読み込んでください。解析完了の件数が表示されます。');return;}
  const engine=globalThis.HistoricalPriceSources;
