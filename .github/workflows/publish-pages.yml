@@ -8,6 +8,8 @@ on:
       - "valuation.html"
       - "valuation.js"
       - "historical-price-sources.js"
+      - "scripts/build-shared-price-cache.py"
+      - "prices/**"
       - "valuation-audit.js"
       - "valuation-police-ui.js"
       - "valuation-worker.js"
@@ -17,10 +19,12 @@ on:
       - "vendor/**"
       - "examples/**"
       - ".github/workflows/publish-pages.yml"
+  schedule:
+    - cron: "27 3 * * *"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -45,6 +49,19 @@ jobs:
           node --check valuation-audit.js
           node --check valuation-police-ui.js
           node scripts/valuation-test.mjs
+      - name: Refresh public IZAKA-YA historical price cache
+        run: |
+          python3 -m py_compile scripts/build-shared-price-cache.py
+          python3 scripts/build-shared-price-cache.py || echo "::warning::Price refresh unavailable; deploy existing cache only"
+      - name: Commit public price snapshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prices/
+          if ! git diff --cached --quiet; then
+            git commit -m "data: refresh IZAKA-YA daily JPY reference rates"
+            git push origin HEAD:main
+          fi
       - name: Prepare static site
         run: |
           mkdir -p _site
@@ -55,6 +72,7 @@ jobs:
           test -f app.js && cp app.js _site/ || true
           test -f package.json && cp package.json _site/ || true
           test -d examples && cp -R examples _site/ || true
+          test -d prices && cp -R prices _site/ || true
           touch _site/.nojekyll
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
