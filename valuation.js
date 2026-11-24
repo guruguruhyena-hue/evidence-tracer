@@ -9,7 +9,7 @@ async function readLargeCsv(file,mode){
  setStatus('CSV読込を開始：'+file.name+' ('+Math.round(file.size/1024)+' KB)／Web Worker起動中');
  const stagedRows=[],stagedPrices=new Map();
  try{
-  const worker=new Worker(new URL('./valuation-worker.js?v=20261124-review2024',document.baseURI),{type:'classic'});
+  const worker=new Worker(new URL('./valuation-worker.js?v=20261124-depositfix',document.baseURI),{type:'classic'});
   await new Promise(resolve=>{
    let ended=false;
    const finish=(message,successful)=>{
@@ -196,11 +196,11 @@ evidenceButton.addEventListener('click',()=>{
 $('selectCandidates').addEventListener('click',()=>{
  let selected=0;for(const r of rows){
   const kind=String(r.category||'').toLowerCase();
-  r.included=positiveDecimal(r.original_amount)&&['onchain_reported','review','unclassified',''].includes(kind);
+  r.included=positiveDecimal(r.original_amount)&&['deposit','onchain_reported','review','unclassified',''].includes(kind);
   if(r.included)selected++;
  }
  render();
- setStatus('暫定評価候補 '+selected+'件を選択しました。review行は真偽未確認のまま参考時価のみ計算します。サービス内入金と数量0は除外します。');
+ setStatus('暫定評価候補 '+selected+'件を選択しました。review行は真偽未確認のまま参考時価のみ計算します。サービス内入金と数量0は除外します。deposit分類は暫定評価対象とします。');
 });
 $('selectNone').addEventListener('click',()=>{
  for(const r of rows)r.included=false;
