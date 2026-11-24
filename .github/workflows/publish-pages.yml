@@ -34,8 +34,7 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir -p _site
-          cp index.html valuation.html _site/
-          test -f report.html && cp report.html _site/ || true
+          cp ./*.html _site/
           test -d src && cp -R src _site/ || true
           test -d vendor && cp -R vendor _site/ || true
           test -f app.js && cp app.js _site/ || true
