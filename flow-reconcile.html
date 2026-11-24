@@ -1,0 +1,38 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none';script-src 'self';worker-src 'self';style-src 'unsafe-inline';connect-src 'self';img-src 'self' data:;object-src 'none';base-uri 'none';form-action 'none'">
+<title>IZAKA-YA 統合資金照合 | Evidence Tracer</title>
+<style>
+:root{--bg:#0b111a;--panel:#172434;--line:#3b5067;--text:#f2f6fa;--sub:#b5c5d5;--accent:#90eedb}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif}main,header{max-width:1300px;margin:auto;padding:22px}header{border-bottom:1px solid var(--line)}h1{font-size:25px;margin:10px 0}h2{font-size:17px;margin:0 0 10px}h3{font-size:14px;margin:10px 0}a{color:var(--accent)}nav,.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.panel{background:var(--panel);padding:18px;border:1px solid var(--line);border-radius:12px;margin:16px 0}.sub{color:var(--sub)}.warn{color:#ffe2ad}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.slot{background:#1e3042;border-radius:9px;padding:12px;min-width:0}small{display:block;color:var(--sub)}label{display:block;font-weight:700;margin:8px 0}input,button,textarea,select{font:inherit}input[type=file]{display:block;width:100%;margin:8px 0}textarea,input:not([type=file]){background:#101c2a;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px;width:100%}textarea{min-height:95px;resize:vertical}.button{background:#26394d;color:var(--text);border:1px solid #5e778f;padding:9px 13px;border-radius:9px;cursor:pointer}.button.main{background:var(--accent);color:#082530;font-weight:bold}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stats>div{background:#203449;border-radius:9px;padding:12px}.stats b{font-size:24px;display:block}.scroll{max-height:500px;overflow:auto;border:1px solid var(--line);border-radius:9px}table{border-collapse:collapse;width:100%;white-space:nowrap;font-size:12px}th,td{border-bottom:1px solid #365069;text-align:left;padding:9px 10px}th{position:sticky;top:0;background:#244056}td.num{text-align:right;font-variant-numeric:tabular-nums}p.note{font-size:12px;color:var(--sub)}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto}.status{padding:11px 13px;border:1px dashed #5e778f;border-radius:9px;margin:12px 0}@media(max-width:720px){.grid,.stats{grid-template-columns:1fr 1fr}main,header{padding:14px}}@media(max-width:480px){.grid,.stats{grid-template-columns:1fr}}
+</style></head><body>
+<header><nav><a href="./index.html">ウォレット照合</a><a href="./valuation.html">参考円評価</a><a href="./history-import.html">PDF・CSV変換</a><a href="./flow-reconcile.html" aria-current="page">統合資金照合</a></nav><h1>IZAKA-YA｜入金・交換・融資・出金 統合照合</h1>
+<p class="sub">4種類の履歴を、通貨ごとに差引照合します。個人CSV・PDFは端末のブラウザ内で処理し、GitHubやサーバーへ送信しません。</p></header>
+<main>
+<section class="panel"><h2>1. 証拠ファイルを読み込む</h2>
+<p class="warn">原本PDFのファイル名ではなく内容を確認してください。出金の「送金済」はサービス上の申告であり、オンチェーン実着金とは分離します。レンディング元本を外部送金として二重計上しません。</p>
+<div class="grid">
+<div class="slot"><label for="depositsFile">① 外部入金（77件）</label><small>入金PDF、または標準化CSV</small><input id="depositsFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="depositsState">未入力</small></div>
+<div class="slot"><label for="exchangesFile">② 内部交換（14件）</label><small>CSV（1交換をexchange_out＋exchange_inの2行）／PDFは未対応形式を警告</small><input id="exchangesFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="exchangesState">未入力</small></div>
+<div class="slot"><label for="lendingFile">③ レンディング（186件）</label><small>融資PDF／CSV。利益はlending_profitとして別仕訳</small><input id="lendingFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="lendingState">未入力</small></div>
+<div class="slot"><label for="withdrawalsFile">④ 出金（7件）</label><small>CSV。送金済はwithdrawal_sent、送金待はwithdrawal_pending</small><input id="withdrawalsFile" type="file" accept=".csv,.pdf,application/pdf,text/csv"><small id="withdrawalsState">未入力</small></div>
+</div>
+<div class="row"><button class="button" id="downloadTemplate">統合CSV入力テンプレートを保存</button><button class="button main" id="recompute">4帳簿を再照合</button></div>
+<p class="note">CSV列：id, datetime_jst, type, asset, amount, fee, fee_asset, pair_id, status, txid, source, source_page, notes。価格・個人ウォレットは共有DBへ送信しません。</p>
+<div id="state" class="status" aria-live="polite">ファイルを選ぶと集計します。</div>
+<div class="stats"><div><small>入金</small><b id="nDeposits">0</b></div><div><small>内部交換（ペア）</small><b id="nExchanges">0</b></div><div><small>融資開始＋終了</small><b id="nLoans">0</b></div><div><small>出金記録</small><b id="nWithdrawals">0</b></div></div>
+</section>
+<section class="panel"><h2>2. 資産別照合表</h2><p class="note">「帳簿推定」は、入金＋交換受取－交換支払＋計上利益－過去送金済表示額－手数料±その他明示調整です。送金待4件は控除しません。金額は通貨単位で比較し、異なる通貨同士は合算しません。</p>
+<div class="scroll"><table><thead><tr><th>銘柄</th><th>外部入金</th><th>交換受取</th><th>交換支払</th><th>融資利益</th><th>過去出金</th><th>手数料</th><th>その他の調整</th><th>申請前帳簿推定</th><th>送金待申請</th></tr></thead><tbody id="assetRows"></tbody></table></div>
+<div class="row" style="margin-top:12px"><button class="button main" id="exportAssets">資産別照合CSV</button><button class="button" id="exportEvents">検算イベントCSV</button><button class="button" id="exportJson">検算JSON（証拠メタ情報付）</button></div>
+</section>
+<section class="panel"><h2>3. 出金7件の記録と実着金の確認状態</h2>
+<p class="note">各出金行のstatusはサービス上の表示、受取Walletでの実受領は別途オンチェーン照合が必要です。CSVの出金履歴がない場合、金額は自動補完しません。</p>
+<div class="scroll"><table><thead><tr><th>日時</th><th>通貨</th><th>申請／送金表示数量</th><th>手数料</th><th>サイト表示</th><th>TxID</th><th>実着金</th></tr></thead><tbody id="withdrawalRows"></tbody></table></div>
+</section>
+<section class="panel"><h2>4. 未解決の差額・検証警告</h2>
+<p class="note">未読込・未対応行は0件として扱わず、照合未完成と表示します。過去の円転、返金、調整等が別経路にある場合、その他調整CSVを追加検討してください。</p><pre id="warnings">まだ資料を読み込んでいません。</pre><p class="warn">この結果はサービス側帳簿の再構成であり、実際の運営ウォレットの保有残高や法的損害額を証明するものではありません。</p>
+</section></main>
+<script src="./history-converter.js?v=20261124a" defer></script>
+<script src="./flow-reconcile.js?v=20261124a" defer></script>
+<script src="./flow-reconcile-ui.js?v=20261124a" defer></script>
+</body></html>
