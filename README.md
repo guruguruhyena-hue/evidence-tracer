@@ -1,3 +1,11 @@
+## Beginner guide: PDF to chain evidence (Japanese)
+
+**[Open the public, one-page illustrated user guide](./guide.html)** · [GitHub Pages guide](https://guruguruhyena-hue.github.io/evidence-tracer/guide.html)
+
+User workflow: save original IZAKA-YA account-history PDFs → normalize PDF/CSV locally → calculate per-asset service ledger and independent JPY reference valuations → scan the user's **public** sending-wallet address → reconcile imported deposit records with TxID, network, asset, amount, destination and timestamp → export JSON/CSV/print evidence. The guide is mobile-responsive and has an A4-oriented print stylesheet. No wallet seed phrase, private key, or identifying case CSV belongs in the public repository.
+
+**Reconciliation limitations:** The four-ledger [flow dashboard](./flow-reconcile.html) accepts deposit and lending text PDFs, but complex exchange two-leg records and pending withdrawal status require correctly normalized CSVs; exported HTML is not guaranteed to reproduce every site PDF layout. The wallet-scanning tools consult external public blockchain APIs and do not prove the operator's legal custody of funds. "Sent" on a service receipt is not an independent blockchain receipt, and calculated JPY is not established legal damages.
+
 # Evidence Tracer
 
 Open-source, local-first blockchain evidence generator. Each case is entered by the user. No default victim, wallet, or case profile is bundled.
