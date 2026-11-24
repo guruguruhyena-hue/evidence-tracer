@@ -1,0 +1,2 @@
+'use strict';
+document.getElementById('printGuide')?.addEventListener('click',()=>window.print());
