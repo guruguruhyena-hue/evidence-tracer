@@ -50,3 +50,16 @@ assert.equal(sample.output.get('BTC|2025-01-01').method,'USDT_PAIR_DAILY_CLOSE_X
 assert.ok(recorded.some(x=>x.includes('data-api.binance.vision')));
 assert.ok(recorded.some(x=>x.includes('frankfurter.dev')));
 console.log('Historical price approximation and provenance tests passed');
+
+// Per-asset summary must preserve arbitrary decimal precision.
+const qtyStart=script.indexOf('function addDecimalToAccumulator(');
+const qtyEnd=script.indexOf('let summaryGeneration=',qtyStart);
+assert.ok(qtyStart>=0&&qtyEnd>qtyStart,'quantity summary utilities present');
+const quantity=vm.runInNewContext(script.slice(beg,script.indexOf('function centsOf(',beg))+'\n'+script.slice(qtyStart,qtyEnd)+';({addDecimalToAccumulator,decimalAccumulatorString})');
+let acc={value:0n,scale:0};
+for(const value of ['0.1','0.2','0.00000001'])quantity.addDecimalToAccumulator(acc,value);
+assert.equal(quantity.decimalAccumulatorString(acc),'0.30000001');
+acc={value:0n,scale:0};
+for(const value of ['1.000000000000000001','0.000000000000000002'])quantity.addDecimalToAccumulator(acc,value);
+assert.equal(quantity.decimalAccumulatorString(acc),'1.000000000000000003');
+console.log('Per-asset exact-quantity aggregation tests passed');
