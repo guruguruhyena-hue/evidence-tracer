@@ -114,7 +114,7 @@ function render(){
  const assets=current.assets.map(a=>({...a,
   other_qty:F.fmt(F.add(F.add(F.parseDecimal(a.merchant_refund_qty),F.parseDecimal(a.adjustment_qty)),{n:-F.parseDecimal(a.merchant_out_qty).n,s:F.parseDecimal(a.merchant_out_qty).s}))
  }));
- drawTable('assetRows',assets,['asset','deposit_qty','exchange_in_qty','exchange_out_qty','profit_qty','sent_qty','fee_qty','other_qty','net_pre_pending','pending_qty']);
+ drawTable('assetRows',assets,['asset','deposit_qty','exchange_in_qty','exchange_out_qty','profit_qty','sent_qty','fee_qty','other_qty','net_pre_pending','pending_qty','pending_fee_quoted_qty']);
  const withdraw=stores.withdrawals.rows.filter(r=>r.type==='withdrawal_sent'||r.type==='withdrawal_pending').map(r=>({
   datetime_jst:r.datetime_jst,asset:r.asset,amount:r.amount,fee:r.fee,
   status:r.status||(r.type==='withdrawal_sent'?'サービス送金済表示':'送金待'),txid:r.txid||'—',
@@ -132,7 +132,7 @@ $('recompute').addEventListener('click',()=>{render();status('照合を再計算
 $('exportAssets').addEventListener('click',()=>{
  const x=render();if(!x.assets.length)return status('先に履歴を読み込んでください');
  exportFile('izakaya_asset_flow_reconciliation.csv',H.toCsv(x.assets,
- ['asset','deposits','deposit_qty','exchange_in','exchange_in_qty','exchange_out','exchange_out_qty','profits','profit_qty','withdrawals_sent','sent_qty','withdrawals_pending','pending_qty','fees','fee_qty','merchant_out_qty','merchant_refund_qty','adjustment_qty','net_pre_pending']));
+ ['asset','deposits','deposit_qty','exchange_in','exchange_in_qty','exchange_out','exchange_out_qty','profits','profit_qty','withdrawals_sent','sent_qty','withdrawals_pending','pending_qty','pending_fee_quoted_qty','fees','fee_qty','merchant_out_qty','merchant_refund_qty','adjustment_qty','net_pre_pending']));
 });
 $('exportEvents').addEventListener('click',()=>{
  const x=render();if(!x.events.length)return status('仕訳がありません');
