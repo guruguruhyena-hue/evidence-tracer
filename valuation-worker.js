@@ -56,7 +56,7 @@ self.onmessage=async event=>{
       if(!utcDay(date)||!a||!validDecimal(amount)){invalid++;continue;}
       output.push({id:r.id||'ROW-'+String(total).padStart(6,'0'),datetime_jst:date,asset:a,amount,original_amount:amount,
         txid:r.txid||'',address:r.address||'',category:r.category||'unclassified',notes:r.notes||'',source:r.source||'CSV',
-        included:r.included?(/^(1|true|yes)$/i.test(r.included)):(['onchain_reported','review','unclassified',''].includes((r.category||'').toLowerCase())),
+        included:(r.included!==undefined&&r.included!==''||r.include_in_valuation!==undefined&&r.include_in_valuation!=='')?(/^(1|true|yes)$/i.test(r.included||r.include_in_valuation)):(['deposit','onchain_reported','review','unclassified',''].includes((r.category||'').trim().toLowerCase())&&amount!=='0'&&!/^0(?:\.0+)?$/.test(amount)),
         manualPrice:validDecimal(r.price_jpy)&&BigInt(String(r.price_jpy).split('.')[0]||'0')>=0n?r.price_jpy:null,manualSource:r.price_source||'',manualSourceUrl:r.price_source_url||'',manualSourceSha256:r.price_source_sha256||'',manualEvidenceRef:r.price_evidence_ref||'',manualPriceMethod:r.price_method||''});
     }else{
       const day=r.date_utc||r.day_utc||r.date||'',px=r.price_jpy||r.jpy||r.close||'';
