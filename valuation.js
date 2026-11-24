@@ -192,6 +192,20 @@ evidenceButton.addEventListener('click',()=>{
  if(/^https?:\/\//i.test(ref)){r.manualSourceUrl=ref.trim();r.manualEvidenceRef='';}else{r.manualEvidenceRef=ref.trim();r.manualSourceUrl='';}
  render();
 });ti.append(evidenceButton);if(getPrice(r)){const div=document.createElement('div');div.className='hint';div.textContent=(positiveDecimal(r.manualPrice)?'手動':'API/価格表')+' · '+UTCday(r.datetime_jst);ti.append(div)}tr.append(ti);const p=getPrice(r);td(p?jpyCents(centsOf(r.original_amount,p.price)):'—',p?'value':'muted');const catText={onchain_reported:'TxID記載',review:'要確認',service_credit:'サービス内入金',zero:'数量0',unclassified:'未分類'};let state=td(catText[r.category]||r.category);state.title=r.notes;let meta=td((r.txid&&r.txid!=='-'?r.txid.slice(0,14)+'…':'TxID記載なし')+(r.notes?' · '+r.notes:''));meta.title=[r.txid,r.address,r.notes].filter(Boolean).join('\n');fragment.append(tr)});tbody.append(fragment);$('shown').textContent=`表示 ${view.length?start+1:0}〜${Math.min(view.length,start+PAGE_SIZE)} / 条件一致${view.length}件（全${rows.length}件）。ページ ${currentPage+1}/${pageCount}`;$('prevPage').disabled=currentPage===0;$('nextPage').disabled=currentPage>=pageCount-1}
+// A classification is not proof of deposit. 'review' remains visibly provisional.
+$('selectCandidates').addEventListener('click',()=>{
+ let selected=0;for(const r of rows){
+  const kind=String(r.category||'').toLowerCase();
+  r.included=positiveDecimal(r.original_amount)&&['onchain_reported','review','unclassified',''].includes(kind);
+  if(r.included)selected++;
+ }
+ render();
+ setStatus('暫定評価候補 '+selected+'件を選択しました。review行は真偽未確認のまま参考時価のみ計算します。サービス内入金と数量0は除外します。');
+});
+$('selectNone').addEventListener('click',()=>{
+ for(const r of rows)r.included=false;
+ render();setStatus('評価対象を全解除しました。元のCSVは変更していません。');
+});
 $('fileCsv').addEventListener('change',async e=>{const f=e.target.files[0];if(f)await readLargeCsv(f,'rows');e.target.value=''});
 $('filePrice').addEventListener('change',async e=>{const f=e.target.files[0];if(f)await readLargeCsv(f,'price');e.target.value=''});
 $('prevPage').addEventListener('click',()=>{if(currentPage>0){currentPage--;render()}});
@@ -204,9 +218,10 @@ $('fetchPrices').addEventListener('click',async()=>{
  if(!engine)return setStatus('共有価格DBのプログラムが未配信です。ブラウザを強制再読み込みしてください');
  const btn=$('fetchPrices'),assets=[...new Set(rows.map(r=>r.asset))];
  const dates=[...new Set(rows.map(r=>UTCday(r.datetime_jst)).filter(Boolean))];
+ const assetDates={};for(const row of rows){const day=UTCday(row.datetime_jst);if(!day)continue;(assetDates[row.asset]??=[]).push(day);}
  btn.disabled=true;setStatus('共有価格データベースを照合中（取引CSVは外部に送信しません）…');
  try{
-  const {output,errors,manifest}=await engine.obtain({assets,dates,onProgress:setStatus});
+  const {output,errors,manifest}=await engine.obtain({assets,dates,assetDates,onProgress:setStatus});
   for(const [key,item] of output)quotes.set(key,item);
   render();
   const supported=assets.filter(a=>engine.SUPPORTED.has(a));
