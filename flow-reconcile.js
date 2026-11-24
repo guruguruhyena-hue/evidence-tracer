@@ -51,7 +51,7 @@ function reconcile(input){
   asset,deposits:0,exchange_in:0,exchange_out:0,loans_started:0,loans_ended:0,profits:0,
   withdrawals_sent:0,withdrawals_pending:0,merchant_out:0,merchant_refund:0,
   fees:0,adjustments:0,deposit_qty:zero(),exchange_in_qty:zero(),exchange_out_qty:zero(),
-  profit_qty:zero(),sent_qty:zero(),pending_qty:zero(),fee_qty:zero(),merchant_out_qty:zero(),
+  profit_qty:zero(),sent_qty:zero(),pending_qty:zero(),fee_qty:zero(),pending_fee_quoted_qty:zero(),merchant_out_qty:zero(),
   merchant_refund_qty:zero(),adjustment_qty:zero(),net_pre_pending:zero(),loan_start_qty:zero(),loan_end_qty:zero()
  });return map.get(asset)};
  for(const r of rows){
@@ -77,6 +77,11 @@ function reconcile(input){
   x.net_pre_pending=add(x.net_pre_pending,delta);event.delta=fmt(delta);events.push(event);
   // Fee belongs to exact asset; never double charge fee already embedded in gross amount.
   if(r.fee!=='0'){
+   if(r.type==='withdrawal_pending'){
+    const quoted=get(r.fee_asset);quoted.pending_fee_quoted_qty=add(quoted.pending_fee_quoted_qty,parseDecimal(r.fee));
+    events.push({id:r.id+':quoted_fee',type:'withdrawal_pending_fee_quote',asset:r.fee_asset,quantity:r.fee,delta:'0',classification:'quoted_not_deducted_pending_fee'});
+    continue;
+   }
    const fx=get(r.fee_asset),f=parseDecimal(r.fee);
    fx.fees++;fx.fee_qty=add(fx.fee_qty,f);fx.net_pre_pending=add(fx.net_pre_pending,neg(f));
    events.push({id:r.id+':fee',type:'fee',asset:r.fee_asset,quantity:r.fee,delta:fmt(neg(f)),classification:'fee_attached_to_event'});
@@ -100,7 +105,7 @@ function reconcile(input){
    exchanges:new Set(rows.filter(r=>r.pair_id&&(r.type==='exchange_in'||r.type==='exchange_out')).map(r=>r.pair_id)).size,
    loan_events:rows.filter(r=>r.type==='lending_start'||r.type==='lending_end').length,
    withdrawal_records:rows.filter(r=>r.type==='withdrawal_sent'||r.type==='withdrawal_pending').length},
-  method:'Deposit + exchange-in - exchange-out + claimed lending profit - recorded sent withdrawals - explicit fees - merchant out + merchant refunds +/- manual adjustments. Pending withdrawals shown separately. Not an on-chain or legal damages determination.'};
+  method:'Deposit + exchange-in - exchange-out + claimed lending profit - recorded sent withdrawals - explicit fees - merchant out + merchant refunds +/- manual adjustments. Pending withdrawals and their quoted fees shown separately and NOT deducted as paid fees. Not an on-chain or legal damages determination.'};
 }
 function fromPdfHistory(rows){
  const result=[],warnings=[];
