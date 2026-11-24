@@ -56,6 +56,8 @@ async function readFile(file,slot){
    parsed={records,warnings:records.filter(r=>r.confidence==='INVALID_FIELDS').map(r=>r.id+':日時／数量に問題あり'),
      meta:{filename:file.name,sha256:hash,format:'CSV',rows:original.length}};
   }
+  const other=slot==='a'?'b':'a';
+  if(meta[other]?.sha256&&meta[other].sha256===parsed.meta.sha256){message('同じ原本ファイルが履歴'+other.toUpperCase()+'に登録されています。二重計上を避けるため追加しませんでした。');return;}
   if(!parsed.records.length){message('抽出0件：元データを変更しません。'+(parsed.warnings.join(' / ')||'ファイル形式を確認してください。'));return;}
   datasets[slot]=parsed.records;
   meta[slot]=parsed.meta;
