@@ -11,10 +11,10 @@
 <section class="panel"><h2>1. 証拠ファイルを読み込む</h2>
 <p class="warn">原本PDFのファイル名ではなく内容を確認してください。出金の「送金済」はサービス上の申告であり、オンチェーン実着金とは分離します。レンディング元本を外部送金として二重計上しません。</p>
 <div class="grid">
-<div class="slot"><label for="depositsFile">① 外部入金（77件）</label><small>入金PDF、または標準化CSV</small><input id="depositsFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="depositsState">未入力</small></div>
-<div class="slot"><label for="exchangesFile">② 内部交換（14件）</label><small>CSV（1交換をexchange_out＋exchange_inの2行）／PDFは未対応形式を警告</small><input id="exchangesFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="exchangesState">未入力</small></div>
-<div class="slot"><label for="lendingFile">③ レンディング（186件）</label><small>融資PDF／CSV。利益はlending_profitとして別仕訳</small><input id="lendingFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="lendingState">未入力</small></div>
-<div class="slot"><label for="withdrawalsFile">④ 出金（7件）</label><small>CSV。送金済はwithdrawal_sent、送金待はwithdrawal_pending</small><input id="withdrawalsFile" type="file" accept=".csv,.pdf,application/pdf,text/csv"><small id="withdrawalsState">未入力</small></div>
+<div class="slot"><label for="depositsFile">① 外部入金</label><small>入金PDF、または標準化CSV</small><input id="depositsFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="depositsState">未入力</small></div>
+<div class="slot"><label for="exchangesFile">② 内部交換</label><small>CSV（1交換をexchange_out＋exchange_inの2行）／PDFは未対応形式を警告</small><input id="exchangesFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="exchangesState">未入力</small></div>
+<div class="slot"><label for="lendingFile">③ レンディング</label><small>融資PDF／CSV。利益はlending_profitとして別仕訳</small><input id="lendingFile" type="file" accept=".pdf,.csv,application/pdf,text/csv"><small id="lendingState">未入力</small></div>
+<div class="slot"><label for="withdrawalsFile">④ 出金</label><small>CSV。送金済はwithdrawal_sent、送金待はwithdrawal_pending</small><input id="withdrawalsFile" type="file" accept=".csv,.pdf,application/pdf,text/csv"><small id="withdrawalsState">未入力</small></div>
 </div>
 <div class="slot" style="margin:14px 0;border:1px solid #426079">
 <label for="journalFile">既存の統合台帳CSVがある場合（任意）</label>
@@ -44,5 +44,5 @@
 </section></main>
 <script src="./history-converter.js?v=20261124realpdf2" defer></script>
 <script src="./flow-reconcile.js?v=20261124realcase4" defer></script>
-<script src="./flow-reconcile-ui.js?v=20261124realcase4" defer></script>
+<script src="./flow-reconcile-ui.js?v=20261124realcase5" defer></script>
 </body></html>
