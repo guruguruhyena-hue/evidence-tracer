@@ -5,9 +5,14 @@ const TYPES=new Set(['deposit','exchange_out','exchange_in','lending_start','len
 const FIELDS=['id','datetime_jst','type','asset','amount','fee','fee_asset','pair_id','status','txid','source','source_page','notes'];
 function parseDecimal(v){
  const s=String(v??'').trim().replaceAll(',','');
- if(!/^(?:0|[0-9]+)(?:\.[0-9]+)?$/.test(s)||s.length>100)throw Error('無効な数量 '+s.slice(0,50));
- const [whole,frac='']=s.split('.');
- return {n:BigInt(whole+frac),s:frac.length};
+ if(s.length>100)throw Error('無効な数量 '+s.slice(0,50));
+ const m=s.match(/^(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/);
+ if(!m)throw Error('無効な数量 '+s.slice(0,50));
+ const expo=Number(m[3]||0);
+ if(!Number.isInteger(expo)||Math.abs(expo)>30)throw Error('指数の範囲外 '+s.slice(0,50));
+ const whole=m[1],frac=m[2]||'',scale=frac.length-expo;
+ const n=BigInt(whole+frac);
+ return scale>=0?{n,s:scale}:{n:n*10n**BigInt(-scale),s:0};
 }
 function add(a,b){
  const scale=Math.max(a.s,b.s);
