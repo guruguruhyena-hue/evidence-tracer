@@ -8,6 +8,7 @@ on:
       - "valuation.html"
       - "valuation.js"
       - "historical-price-sources.js"
+      - "shared-price-db.js"
       - "scripts/build-shared-price-cache.py"
       - "prices/**"
       - "valuation-audit.js"
@@ -45,6 +46,7 @@ jobs:
         run: |
           node --check valuation.js
           node --check historical-price-sources.js
+          node --check shared-price-db.js
           node --check valuation-worker.js
           node --check valuation-audit.js
           node --check valuation-police-ui.js
@@ -66,7 +68,7 @@ jobs:
         run: |
           mkdir -p _site
           cp ./*.html _site/
-          cp valuation.js valuation-worker.js valuation-audit.js valuation-police-ui.js historical-price-sources.js _site/
+          cp valuation.js valuation-worker.js valuation-audit.js valuation-police-ui.js historical-price-sources.js shared-price-db.js _site/
           test -d src && cp -R src _site/ || true
           test -d vendor && cp -R vendor _site/ || true
           test -f app.js && cp app.js _site/ || true
