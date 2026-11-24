@@ -44,6 +44,20 @@ Open the standalone [`valuation.html`](./valuation.html) page for an **open-sour
 
 For GitHub Pages deployments using the repository root as the publishing source, the direct path is `/valuation.html`. If Pages is not enabled, users can download the repository and open the standalone HTML file locally.
 
+## Shared IZAKA-YA historical rate database / 共通過去価格DB
+
+The **primary** valuation action is now **共有価格DBと照合**. It reads public annual reference-rate snapshots from this website, rather than making repeated per-user requests to third-party crypto market APIs. The optional **外部APIから直接取得（予備）** button remains available when the shared cache is incomplete.
+
+- **Only eight assets** receive automated historical reference quotes: `BTC`, `ETH`, `SOL`, `XRP`, `USDC`, `USDT`, `SHIB`, `OP`. Independent-token symbols `AKC` and `IZKY` are **unpriced pending documented evidence**.
+- Coverage begins **2025-01-01 UTC** and runs to the most recent completed UTC day; no invented prices for out-of-range or missing dates.
+- Static files: `prices/manifest.json`, `prices/<ASSET>/<YEAR>.json` and corresponding `.csv` documents. Cached prices have source URLs, source FX day, retrieval date and formula.
+- Data producer: `scripts/build-shared-price-cache.py`. GitHub Actions refreshes daily at 03:27 UTC and on website deployment; this requires repository Actions, workflow-write permission and enabled GitHub Pages.
+- **First-run condition:** The files are only usable after GitHub Actions **successfully collects and publishes the dataset**. Source being committed does **not** prove the cache is populated. If `prices/manifest.json` returns HTTP 404, inspect the [deployment workflow](https://github.com/guruguruhyena-hue/evidence-tracer/actions/workflows/publish-pages.yml).
+- Cached rates are **estimated**: public Binance close in USDT × Frankfurter USD/JPY reference; USDT/USD parity is an explicit assumption. They are not confirmed JPY purchase prices or proof of damages. Evidence exports preserve this distinction.
+- Privacy: the shared static database contains no victim transaction history or wallet addresses. Reading asset/year cache files does not upload the user's CSV; ordinary access logs and API activity from the optional direct-fallback action still apply.
+
+Price provenance, refresh rules, third-party usage terms and the precise dataset layout are documented in [`prices/README.md`](./prices/README.md). These market prices are third-party information; this repository's MIT license applies to its code, not automatically to underlying market data.
+
 ## Local use
 No build step is required. Serve the repository as static files:
 
