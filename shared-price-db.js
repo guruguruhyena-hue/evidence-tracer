@@ -9,7 +9,7 @@
   if(!response.ok)throw Error('HTTP '+response.status+' for '+path);
   return response.json();
  };
- async function obtain({assets,dates,onProgress}){
+ async function obtain({assets,dates,assetDates,onProgress}){
   const base='./prices/';
   const manifest=await json(base+'manifest.json');
   if(manifest.schema_version!==1||!manifest.assets)throw Error('DBマニフェスト形式が不正です');
@@ -19,7 +19,8 @@
   for(const asset of assets){
    if(!SUPPORTED.has(asset)){errors.push(asset+':共有DB対象外（独自トークンは手動資料）');continue;}
    const yearMap=new Map();
-   for(const day of uniqueDates){const yr=day.slice(0,4);if(!yearMap.has(yr))yearMap.set(yr,new Set());yearMap.get(yr).add(day);}
+   const daysForAsset=assetDates?.[asset] ? new Set(assetDates[asset]) : uniqueDates;
+   for(const day of daysForAsset){if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;const yr=day.slice(0,4);if(!yearMap.has(yr))yearMap.set(yr,new Set());yearMap.get(yr).add(day);}
    wanted.set(asset,yearMap);
   }
   const total=[...wanted.values()].reduce((n,v)=>n+v.size,0);
