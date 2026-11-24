@@ -9,7 +9,7 @@ async function readLargeCsv(file,mode){
  setStatus('CSV読込を開始：'+file.name+' ('+Math.round(file.size/1024)+' KB)／Web Worker起動中');
  const stagedRows=[],stagedPrices=new Map();
  try{
-  const worker=new Worker(new URL('./valuation-worker.js?v=20261124-police3',document.baseURI),{type:'classic'});
+  const worker=new Worker(new URL('./valuation-worker.js?v=20261124-review2024',document.baseURI),{type:'classic'});
   await new Promise(resolve=>{
    let ended=false;
    const finish=(message,successful)=>{
@@ -29,6 +29,10 @@ async function readLargeCsv(file,mode){
        hashFileForEvidence(file).then(hash=>{priceFileSHA=hash;$('priceFileHash').textContent=hash;});
       }
       render();
+      if(mode==='rows'){
+       const reviewed=stagedRows.filter(r=>r.category==='review').length;
+       if(reviewed)message+=' 要確認（review）'+reviewed+'件は参考評価の候補として含めました。送金・着金を裏付ける証拠確認は別途必要です。';
+      }
      }
      setStatus(message);
      resolve();
