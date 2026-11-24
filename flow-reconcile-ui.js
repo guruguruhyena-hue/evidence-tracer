@@ -4,6 +4,8 @@ const $=id=>document.getElementById(id),H=globalThis.IzkHistory,F=globalThis.Izk
 const categories=['deposits','exchanges','lending','withdrawals'];
 const stores=Object.fromEntries(categories.map(k=>[k,{rows:[],metadata:null,warnings:[]}]));
 const MAX_BYTES=35*1024*1024;
+let unifiedJournal=null;
+let adjustments={rows:[],metadata:null,warnings:[]};
 function status(msg){$('state').textContent=msg}
 function exportFile(name,contents,type='text/csv;charset=utf-8'){
  const uri=URL.createObjectURL(new Blob([contents],{type})),a=document.createElement('a');
@@ -77,17 +79,19 @@ async function readOne(file,kind){
   }
   const other=categories.find(x=>x!==kind&&stores[x].metadata?.sha256===metadata.sha256);
   if(other)throw Error('同一原本をすでに '+other+' に登録済みです。二重計上を避けました');
+  if(unifiedJournal){unifiedJournal=null;$('journalState').textContent='個別帳簿の読込に切り替えました';}
   stores[kind]={rows,warnings,metadata};
   $(kind+'State').textContent=rows.length+'仕訳'+(warnings.length?'／確認事項'+warnings.length:'')+' · SHA-256 '+metadata.sha256.slice(0,12)+'…';
   render();status(file.name+'を読み込みました。仕訳'+rows.length+'件。確認事項は下部をご覧ください');
  }catch(e){status('読込失敗：'+String(e?.message||e)+'（それまでの仕訳を保持しました）')}
 }
-function collect(){return categories.flatMap(kind=>stores[kind].rows)}
+function collect(){return (unifiedJournal?unifiedJournal.rows:categories.flatMap(kind=>stores[kind].rows)).concat(adjustments.rows)}
 function getReport(){
  const report=F.reconcile(collect());
- const missing=categories.filter(kind=>!stores[kind].metadata);
- const warnings=categories.flatMap(kind=>stores[kind].warnings.map(v=>kind+': '+v));
+ const missing=unifiedJournal?[]:categories.filter(kind=>!stores[kind].metadata);
+ const warnings=categories.flatMap(kind=>stores[kind].warnings.map(v=>kind+': '+v)).concat(adjustments.warnings.map(v=>'adjustments: '+v));
  if(missing.length)warnings.unshift('未入力帳簿: '+missing.join(', ')+'。照合は未完成です。');
+ if(!adjustments.metadata)warnings.push('過去の円転・返金・取消前の支払等が未入力です。ETH / USDT / JPYR等の推定値は調整前であり、確定残高ではありません。');
  return {...report,warnings:warnings.concat(report.warnings),complete:missing.length===0&&warnings.length===0&&report.warnings.length===0};
 }
 function drawTable(bodyId,rows,fields){
@@ -124,6 +128,45 @@ function render(){
  $('warnings').textContent=current.warnings.join('\n')||'形式上の警告はありません。実際の着金確認は別途必要です。';
  return current;
 }
+
+async function importUnifiedJournal(file){
+ if(!file)return;
+ if(file.size>MAX_BYTES)return status('統合CSVが35MBを超えています');
+ try{
+  const bytes=await file.arrayBuffer(),original=H.parseCsv(new TextDecoder('utf-8').decode(bytes));
+  if(!original.length||!['kind','asset','raw_amount','wallet_delta'].every(k=>Object.hasOwn(original[0],k)))
+   throw Error('統合台帳の列（kind, asset, raw_amount, wallet_delta）が不足しています');
+  const mapped=F.fromAuditJournal(original),tested=F.reconcile(mapped);
+  if(tested.totals.valid_rows!==mapped.length)throw Error('仕訳が無効です: '+tested.warnings.slice(0,4).join(' / '));
+  const sha256=await digest(bytes);
+  if(adjustments.metadata?.sha256===sha256)throw Error('調整CSVと同一の原本は登録できません');
+  unifiedJournal={rows:mapped,metadata:{file:file.name,sha256,rows:original.length},warnings:tested.warnings};
+  for(const category of categories){stores[category]={rows:[],warnings:[],metadata:null};$(category+'State').textContent='統合台帳を使用';}
+  $('journalState').textContent=mapped.length+'仕訳 · SHA-256 '+sha256.slice(0,12)+'…';
+  render();status('統合台帳 '+mapped.length+'仕訳を検証して読み込みました。円転・返金調整の有無を確認してください。');
+ }catch(e){status('統合台帳の読込エラー: '+String(e.message||e))}
+}
+async function importAdjustments(file){
+ if(!file)return;
+ if(file.size>MAX_BYTES)return status('調整CSVが35MBを超えています');
+ try{
+  const bytes=await file.arrayBuffer(),raw=H.parseCsv(new TextDecoder('utf-8').decode(bytes));
+  if(!raw.length)throw Error('空のCSVです');
+  const allowed=new Set(['merchant_out','merchant_refund','adjustment_in','adjustment_out']);
+  const rows=raw.map((r,i)=>mapCsv(r,'adjustments',i,file));
+  const invalid=rows.filter(r=>!allowed.has(r.type));
+  if(invalid.length)throw Error('調整CSVに許可されないtypeがあります: '+invalid.slice(0,4).map(r=>r.type).join(','));
+  const tested=F.validate(rows);
+  if(tested.errors.length)throw Error(tested.errors.slice(0,4).join(' / '));
+  const sha256=await digest(bytes);
+  if(unifiedJournal?.metadata.sha256===sha256||categories.some(k=>stores[k].metadata?.sha256===sha256))throw Error('同じ原本は二重登録できません');
+  adjustments={rows,metadata:{file:file.name,sha256,rows:rows.length},warnings:[]};
+  $('adjustmentsState').textContent=rows.length+'仕訳 · SHA-256 '+sha256.slice(0,12)+'…';
+  render();status('その他の調整 '+rows.length+'件を反映しました。対応取引の重複がないか元資料で確認してください。');
+ }catch(e){status('調整CSVの読込エラー: '+String(e.message||e))}
+}
+$('journalFile').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)void importUnifiedJournal(file);e.target.value='';});
+$('adjustmentsFile').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)void importAdjustments(file);e.target.value='';});
 for(const kind of categories){
  const el=$(kind+'File');
  el.addEventListener('change',()=>{const file=el.files?.[0];if(file)void readOne(file,kind);el.value='';});
@@ -140,7 +183,7 @@ $('exportEvents').addEventListener('click',()=>{
 });
 $('exportJson').addEventListener('click',()=>{
  const x=render();exportFile('izakaya_flow_reconciliation.json',JSON.stringify({
-  generated_at_utc:new Date().toISOString(),sources:Object.fromEntries(categories.map(k=>[k,stores[k].metadata])),
+  generated_at_utc:new Date().toISOString(),sources:Object.fromEntries(categories.map(k=>[k,stores[k].metadata]).concat([['unified_journal',unifiedJournal?.metadata||null],['adjustments',adjustments.metadata]])),
   analysis:x,caution:'Local service ledger estimate. Neither on-chain transfer proof nor legal damages.'
  },null,2),'application/json;charset=utf-8');
 });
