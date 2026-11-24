@@ -36,7 +36,7 @@ function validate(rows){
   if(!TYPES.has(type)){errors.push(id+': 未対応type '+type);continue}
   if(!/^[A-Z0-9]{2,12}$/.test(asset)){errors.push(id+': assetが不正');continue}
   try{amt=parseDecimal(row.amount)}catch(e){errors.push(id+': '+e.message);continue}
-  if(amt.n<=0n){errors.push(id+': amountは正の数が必要');continue}
+  if(amt.n<0n||(amt.n===0n&&type!=='deposit')){errors.push(id+': amountは負数不可（0は入金記録のみ許容）');continue}
   const fee=String(row.fee??'').trim();
   if(fee){try{if(parseDecimal(fee).n<0n)throw Error('negative')}catch{errors.push(id+': feeが不正');continue}}
   const feeAsset=String(row.fee_asset||asset).trim().toUpperCase();
