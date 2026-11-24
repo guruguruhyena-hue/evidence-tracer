@@ -21,8 +21,8 @@
 <div id="state" class="status" aria-live="polite">ファイルを選ぶと集計します。</div>
 <div class="stats"><div><small>入金</small><b id="nDeposits">0</b></div><div><small>内部交換（ペア）</small><b id="nExchanges">0</b></div><div><small>融資開始＋終了</small><b id="nLoans">0</b></div><div><small>出金記録</small><b id="nWithdrawals">0</b></div></div>
 </section>
-<section class="panel"><h2>2. 資産別照合表</h2><p class="note">「帳簿推定」は、入金＋交換受取－交換支払＋計上利益－過去送金済表示額－手数料±その他明示調整です。送金待4件は控除しません。金額は通貨単位で比較し、異なる通貨同士は合算しません。</p>
-<div class="scroll"><table><thead><tr><th>銘柄</th><th>外部入金</th><th>交換受取</th><th>交換支払</th><th>融資利益</th><th>過去出金</th><th>手数料</th><th>その他の調整</th><th>申請前帳簿推定</th><th>送金待申請</th></tr></thead><tbody id="assetRows"></tbody></table></div>
+<section class="panel"><h2>2. 資産別照合表</h2><p class="note">「帳簿推定」は、入金＋交換受取－交換支払＋計上利益－過去送金済表示額－手数料±その他明示調整です。送金待4件の受取予定額と見積手数料は別列に示し、申請前残高からは控除しません。金額は通貨単位で比較し、異なる通貨同士は合算しません。</p>
+<div class="scroll"><table><thead><tr><th>銘柄</th><th>外部入金</th><th>交換受取</th><th>交換支払</th><th>融資利益</th><th>過去出金</th><th>手数料</th><th>その他の調整</th><th>申請前帳簿推定</th><th>送金待受取予定</th><th>送金待見積手数料</th></tr></thead><tbody id="assetRows"></tbody></table></div>
 <div class="row" style="margin-top:12px"><button class="button main" id="exportAssets">資産別照合CSV</button><button class="button" id="exportEvents">検算イベントCSV</button><button class="button" id="exportJson">検算JSON（証拠メタ情報付）</button></div>
 </section>
 <section class="panel"><h2>3. 出金7件の記録と実着金の確認状態</h2>
@@ -33,6 +33,6 @@
 <p class="note">未読込・未対応行は0件として扱わず、照合未完成と表示します。過去の円転、返金、調整等が別経路にある場合、その他調整CSVを追加検討してください。</p><pre id="warnings">まだ資料を読み込んでいません。</pre><p class="warn">この結果はサービス側帳簿の再構成であり、実際の運営ウォレットの保有残高や法的損害額を証明するものではありません。</p>
 </section></main>
 <script src="./history-converter.js?v=20261124realpdf2" defer></script>
-<script src="./flow-reconcile.js?v=20261124a" defer></script>
-<script src="./flow-reconcile-ui.js?v=20261124a" defer></script>
+<script src="./flow-reconcile.js?v=20261124realcase3" defer></script>
+<script src="./flow-reconcile-ui.js?v=20261124realcase3" defer></script>
 </body></html>
