@@ -1,8 +1,7 @@
 name: Deploy Evidence Tracer to GitHub Pages
 
+# Legacy deployment retained for manual recovery only. Normal deploys use publish-pages.yml.
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
 
 permissions:
