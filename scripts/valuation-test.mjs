@@ -68,11 +68,11 @@ const provisionalEvents=[], provisionalSelf={postMessage:m=>provisionalEvents.pu
 vm.runInNewContext(workerCode,{
  self:provisionalSelf,TextDecoder,Blob,setTimeout,BigInt,Date,Number,Math,Uint8Array,String,Array,Object,RegExp,Error
 },{filename:'valuation-worker-review.js'});
-const example='datetime_jst,asset,amount,category\\n'+
- '2024/12/26 23:02,USDC,10,review\\n'+
- '2025/01/01 13:00,BTC,0.1,onchain_reported\\n'+
- '2025/01/01 13:00,ETH,1,service_credit\\n'+
- '2025/01/01 13:00,XRP,0,zero\\n';
+const example='datetime_jst,asset,amount,category\n'+
+ '2024/12/26 23:02,USDC,10,review\n'+
+ '2025/01/01 13:00,BTC,0.1,onchain_reported\n'+
+ '2025/01/01 13:00,ETH,1,service_credit\n'+
+ '2025/01/01 13:00,XRP,0,zero\n';
 await provisionalSelf.onmessage({data:{type:'import',file:new Blob([example]),id:'rows'}});
 const rr=provisionalEvents.filter(m=>m.type==='batch').flatMap(m=>m.rows);
 assert.equal(rr.length,4);
