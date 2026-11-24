@@ -8,6 +8,7 @@ on:
       - "valuation.html"
       - "valuation.js"
       - "valuation-worker.js"
+      - "scripts/valuation-test.mjs"
       - "report.html"
       - "src/**"
       - "vendor/**"
@@ -34,7 +35,10 @@ jobs:
       - name: Checkout public code
         uses: actions/checkout@v4
       - name: Check valuation JavaScript syntax
-        run: node --check valuation.js
+        run: |
+          node --check valuation.js
+          node --check valuation-worker.js
+          node scripts/valuation-test.mjs
       - name: Prepare static site
         run: |
           mkdir -p _site
