@@ -2,32 +2,61 @@
 const MAX_CSV_BYTES=500*1024*1024,CHUNK_BYTES=512*1024,MAX_SYMBOLS=100,MAX_RECORDS=1000000;const PAGE_SIZE=100;let rows=[],quotes=new Map(),status='',currentPage=0,loadBusy=false;let sourceFileSHA='',priceFileSHA='',sourceFileName='',priceFileName='';const $=id=>document.getElementById(id);const nfmt=(v,max=8)=>new Intl.NumberFormat('ja-JP',{maximumFractionDigits:max}).format(v);const currency=(v)=>new Intl.NumberFormat('ja-JP',{style:'currency',currency:'JPY',maximumFractionDigits:0}).format(v);
 // One worker per import. Parsed batches remain in browser memory only.
 async function readLargeCsv(file,mode){
- if(loadBusy)return setStatus('別のCSVを処理中です');
- if(file.size>MAX_CSV_BYTES)return setStatus('500MBを超えています。分割してください。');
- if(typeof Worker==='undefined')return setStatus('このブラウザはWeb Workerを利用できません。');
+ if(loadBusy)return setStatus('別のCSVを読み込み中です');
+ if(file.size>MAX_CSV_BYTES)return setStatus('CSVは500MB以下にしてください：'+file.name);
+ if(typeof Worker==='undefined')return setStatus('Web Worker非対応ブラウザです。最新版Chrome/Firefoxで開いてください。');
  loadBusy=true;const inputs=[$('fileCsv'),$('filePrice')];inputs.forEach(i=>i.disabled=true);
- const worker=new Worker('./valuation-worker.js');
+ setStatus('CSV読込を開始：'+file.name+' ('+Math.round(file.size/1024)+' KB)／Web Worker起動中');
  const stagedRows=[],stagedPrices=new Map();
- await new Promise(resolve=>{
-  worker.onmessage=event=>{
-   const msg=event.data;
-   if(msg.type==='progress'){setStatus('Web Workerで解析中：'+msg.percent+'%');return;}
-   if(msg.type==='batch'){
-    if(mode==='rows')stagedRows.push(...msg.rows);
-    else for(const item of msg.rows)stagedPrices.set(item.key,{price:item.price,source:item.source,sourceUrl:item.sourceUrl||'',sourceSha256:item.sourceSha256||'',evidenceRef:item.evidenceRef||'',method:item.method||'',timestamp:item.checkedAt||new Date().toISOString()});
-    return;
-   }
-   if(msg.type==='done'){
-    if(mode==='rows'){rows=stagedRows;currentPage=0;updateFilters();sourceFileName=file.name;sourceFileSHA='';$('inputFileHash').textContent='SHA-256計算中…';hashFileForEvidence(file).then(hash=>{sourceFileSHA=hash;$('inputFileHash').textContent=hash;});}
-    else {for(const [k,v] of stagedPrices)quotes.set(k,v);priceFileName=file.name;priceFileSHA='';$('priceFileHash').textContent='SHA-256計算中…';hashFileForEvidence(file).then(hash=>{priceFileSHA=hash;$('priceFileHash').textContent=hash;});}
-    render();setStatus('Web Worker解析完了：'+msg.accepted+'件、有効でない行 '+msg.invalid+'件');
-    worker.terminate();resolve();
-   }else if(msg.type==='error'){setStatus('CSV解析失敗：'+msg.message+'。元のデータは維持されました。');worker.terminate();resolve();}
-  };
-  worker.onerror=err=>{setStatus('Web Worker起動エラー：'+err.message);worker.terminate();resolve();}
-  worker.postMessage({type:'import',file,id:mode==='rows'?'rows':'prices'});
- });
- loadBusy=false;inputs.forEach(i=>i.disabled=false);
+ try{
+  const worker=new Worker(new URL('./valuation-worker.js?v=20261124-police3',document.baseURI),{type:'classic'});
+  await new Promise(resolve=>{
+   let ended=false;
+   const finish=(message,successful)=>{
+     if(ended)return;ended=true;
+     clearTimeout(timer);
+     worker.terminate();
+     if(successful){
+      if(mode==='rows'){
+       rows=stagedRows;currentPage=0;updateFilters();
+       sourceFileName=file.name;sourceFileSHA='';
+       $('inputFileHash').textContent='SHA-256計算中…';
+       hashFileForEvidence(file).then(hash=>{sourceFileSHA=hash;$('inputFileHash').textContent=hash;});
+      }else{
+       for(const [k,v] of stagedPrices)quotes.set(k,v);
+       priceFileName=file.name;priceFileSHA='';
+       $('priceFileHash').textContent='SHA-256計算中…';
+       hashFileForEvidence(file).then(hash=>{priceFileSHA=hash;$('priceFileHash').textContent=hash;});
+      }
+      render();
+     }
+     setStatus(message);
+     resolve();
+   };
+   // Avoid indefinite silent hangs if Pages has not published the worker bundle.
+   const timer=setTimeout(()=>finish('CSV解析タイムアウト：Workerの配信とブラウザの開発者コンソールを確認してください。',false),90000);
+   worker.onmessage=event=>{
+    const msg=event.data||{};
+    if(msg.type==='progress'){setStatus('CSV解析中 '+file.name+'：'+msg.percent+'%');return;}
+    if(msg.type==='batch'){
+     if(mode==='rows')stagedRows.push(...msg.rows);
+     else for(const item of msg.rows)stagedPrices.set(item.key,{price:item.price,source:item.source,sourceUrl:item.sourceUrl||'',sourceSha256:item.sourceSha256||'',evidenceRef:item.evidenceRef||'',method:item.method||'',timestamp:item.checkedAt||new Date().toISOString()});
+     return;
+    }
+    if(msg.type==='done'){
+      finish('CSV読込完了：'+(mode==='rows'?stagedRows.length:stagedPrices.size)+'件。無効な行：'+msg.invalid+'件。',true);
+    }else if(msg.type==='error'){
+      finish('CSV解析失敗（'+file.name+'）：'+msg.message+'。必要な列や文字コードを確認してください。',false);
+    }
+   };
+   worker.onerror=e=>finish('CSV Workerの実行に失敗：'+(e.message||'配信ファイルが404またはブロックされた可能性')+'。ブラウザ再読込とGitHub Pagesの公開状態を確認してください。',false);
+   worker.postMessage({type:'import',file,id:mode==='rows'?'rows':'prices'});
+  });
+ }catch(e){
+   setStatus('CSV Workerを起動できません：'+String(e?.message||e)+'。GitHub Pagesの最新版を確認してください。');
+ }finally{
+   loadBusy=false;inputs.forEach(i=>i.disabled=false);
+ }
 }
 async function hashFileForEvidence(file){
  if(file.size>32*1024*1024)return 'UNAVAILABLE_LARGE_FILE_OVER_32_MIB';
@@ -110,7 +139,7 @@ $('filePrice').addEventListener('change',async e=>{const f=e.target.files[0];if(
 $('prevPage').addEventListener('click',()=>{if(currentPage>0){currentPage--;render()}});
 $('nextPage').addEventListener('click',()=>{currentPage++;render()});
 ['filter','coinFilter','stateFilter'].forEach(x=>$(x).addEventListener('input',render));
-$('fetchPrices').addEventListener('click',async()=>{if(!rows.length){setStatus('先に取引CSVを読み込んでください');return}const symbols=[...new Set(rows.map(r=>r.asset))].filter(a=>!['IZKY','AKC'].includes(a));if(symbols.length>MAX_SYMBOLS){setStatus('価格APIの負荷を抑えるため100通貨まで一括照会できます。手動価格CSVなら制限はありません。');return}let last=0;for(const r of rows){const ms=Date.parse(UTCday(r.datetime_jst)+'T00:00:00Z');if(Number.isFinite(ms)&&ms>last)last=ms;}if(!last){setStatus('有効な日時がありません');return;}let finish=Math.floor(last/1000)+86400,success=0,fail=[];const btn=$('fetchPrices');btn.disabled=true;for(let i=0;i<symbols.length;i++){const a=symbols[i];setStatus(`公開価格APIに照会中 ${i+1}/${symbols.length}：${a}（取得できた行だけ評価）`);try{const url=`https://min-api.cryptocompare.com/data/v2/histoday?fsym=${encodeURIComponent(a)}&tsym=JPY&limit=950&toTs=${finish}&extraParams=EVIDENCE_TRACER_VALUATION`;const res=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(data.Response==='Error')throw Error(data.Message||'API error');const bars=data.Data?.Data;if(!Array.isArray(bars)||!bars.length)throw Error('日足データなし');let ct=0;for(const bar of bars){if(Number(bar.close)>0&&Number.isFinite(bar.time)){const d=new Date(bar.time*1000).toISOString().slice(0,10);quotes.set(priceKey(a,d),{price:String(bar.close),source:'CryptoCompare histoday JPY UTC daily close',sourceUrl:url,sourceSha256:'',evidenceRef:'',method:'UTC_DAILY_CLOSE',timestamp:new Date().toISOString()});ct++}}if(ct)success++;else fail.push(a+':有効価格なし')}catch(e){fail.push(a+':'+String(e.message||e))}render()}btn.disabled=false;setStatus(`価格API：${success}/${symbols.length}通貨に価格データ取得。${fail.length?'要確認 '+fail.join(' / '):'処理完了'}。AKC・IZKYは個別調査・手動単価が必要です。`)});
+$('fetchPrices').addEventListener('click',async()=>{if(!rows.length){setStatus('取引CSVをまだ正常に読み込めていません。「取引CSVを読み込む」でCSVを選択し、上の「CSV読込完了：○件」を確認してください。Worker失敗の場合はエラーが表示されます。');return}const symbols=[...new Set(rows.map(r=>r.asset))].filter(a=>!['IZKY','AKC'].includes(a));if(symbols.length>MAX_SYMBOLS){setStatus('価格APIの負荷を抑えるため100通貨まで一括照会できます。手動価格CSVなら制限はありません。');return}let last=0;for(const r of rows){const ms=Date.parse(UTCday(r.datetime_jst)+'T00:00:00Z');if(Number.isFinite(ms)&&ms>last)last=ms;}if(!last){setStatus('有効な日時がありません');return;}let finish=Math.floor(last/1000)+86400,success=0,fail=[];const btn=$('fetchPrices');btn.disabled=true;for(let i=0;i<symbols.length;i++){const a=symbols[i];setStatus(`公開価格APIに照会中 ${i+1}/${symbols.length}：${a}（取得できた行だけ評価）`);try{const url=`https://min-api.cryptocompare.com/data/v2/histoday?fsym=${encodeURIComponent(a)}&tsym=JPY&limit=950&toTs=${finish}&extraParams=EVIDENCE_TRACER_VALUATION`;const res=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(data.Response==='Error')throw Error(data.Message||'API error');const bars=data.Data?.Data;if(!Array.isArray(bars)||!bars.length)throw Error('日足データなし');let ct=0;for(const bar of bars){if(Number(bar.close)>0&&Number.isFinite(bar.time)){const d=new Date(bar.time*1000).toISOString().slice(0,10);quotes.set(priceKey(a,d),{price:String(bar.close),source:'CryptoCompare histoday JPY UTC daily close',sourceUrl:url,sourceSha256:'',evidenceRef:'',method:'UTC_DAILY_CLOSE',timestamp:new Date().toISOString()});ct++}}if(ct)success++;else fail.push(a+':有効価格なし')}catch(e){fail.push(a+':'+String(e.message||e))}render()}btn.disabled=false;setStatus(`価格API：${success}/${symbols.length}通貨に価格データ取得。${fail.length?'要確認 '+fail.join(' / '):'処理完了'}。AKC・IZKYは個別調査・手動単価が必要です。`)});
 $('export').addEventListener('click',async()=>{if(!rows.length)return;
  const fields=ValuationAudit.COLS;
  const btn=$('export');btn.disabled=true;
