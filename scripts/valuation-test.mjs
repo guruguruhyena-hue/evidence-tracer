@@ -91,7 +91,7 @@ const depositCsv=[
  '2025/01/16 18:12,XRP,0,deposit,',
  '2025/01/16 18:12,SOL,2,deposit,no',
  '2025/01/16 18:12,OP,3,review,'
-].join('\\n')+'\\n';
+].join('\n')+'\n';
 await depositSelf.onmessage({data:{type:'import',file:new Blob([depositCsv]),id:'rows'}});
 const depositRows=depositEvents.filter(m=>m.type==='batch').flatMap(m=>m.rows);
 assert.equal(depositRows.length,6);
