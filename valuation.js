@@ -1,5 +1,5 @@
 'use strict';
-const MAX_CSV_BYTES=500*1024*1024,CHUNK_BYTES=512*1024,MAX_SYMBOLS=100;const PAGE_SIZE=100;let rows=[],quotes=new Map(),status='',currentPage=0,loadBusy=false;const $=id=>document.getElementById(id);const nfmt=(v,max=8)=>new Intl.NumberFormat('ja-JP',{maximumFractionDigits:max}).format(v);const currency=(v)=>new Intl.NumberFormat('ja-JP',{style:'currency',currency:'JPY',maximumFractionDigits:0}).format(v);
+const MAX_CSV_BYTES=500*1024*1024,CHUNK_BYTES=512*1024,MAX_SYMBOLS=100,MAX_RECORDS=1000000;const PAGE_SIZE=100;let rows=[],quotes=new Map(),status='',currentPage=0,loadBusy=false;const $=id=>document.getElementById(id);const nfmt=(v,max=8)=>new Intl.NumberFormat('ja-JP',{maximumFractionDigits:max}).format(v);const currency=(v)=>new Intl.NumberFormat('ja-JP',{style:'currency',currency:'JPY',maximumFractionDigits:0}).format(v);
 function csvParse(s){const out=[];let cell='',row=[],quoted=false;for(let i=0;i<s.length;i++){let c=s[i];if(quoted){if(c==='"'&&s[i+1]==='"'){cell+='"';i++}else if(c==='"')quoted=false;else cell+=c}else if(c==='"')quoted=true;else if(c===','){row.push(cell);cell=''}else if(c==='\n'||c==='\r'){if(c==='\r'&&s[i+1]==='\n')i++;row.push(cell);if(row.some(x=>x!==''))out.push(row);row=[];cell=''}else cell+=c}row.push(cell);if(row.some(x=>x!==''))out.push(row);return out}
 function readCsv(s){let arr=csvParse(s.replace(/^\ufeff/,''));if(!arr.length)return [];let head=arr.shift().map(x=>x.trim().toLowerCase());return arr.map(v=>Object.fromEntries(head.map((k,i)=>[k,(v[i]||'').trim()]))) }
 // Streaming CSV parser: UTF-8 chunks, embedded newlines and escaped double quotes.
@@ -35,7 +35,7 @@ async function readLargeCsv(file,mode){
  try{
   await streamCSV(file,(batch)=>{
    for(const record of batch){
-    if(headings===null){headings=record.map(x=>x.trim().toLowerCase());continue;}
+    if(headings===null){headings=record.map(x=>x.trim().toLowerCase());if(!headings.includes('asset')||(mode==='rows'&&!headings.includes('amount'))||(mode==='price'&&!headings.some(x=>['price_jpy','jpy','close'].includes(x))))throw Error('必要なCSV列がありません');continue;}if(++count>MAX_RECORDS)throw Error('行数が100万件を超えました。複数ファイルに分割してください。');
     const data=Object.fromEntries(headings.map((k,i)=>[k,(record[i]||'').trim()]));
     if(mode==='rows'){
       const date=data.datetime_jst||data.date_jst||data.date||'',amountRaw=data.amount||'',amount=Number(String(amountRaw).replaceAll(',',''));
@@ -44,7 +44,7 @@ async function readLargeCsv(file,mode){
     }else{
       const a=normalizeAsset(data.asset),d=data.date_utc||data.day_utc||data.date,px=Number(data.price_jpy||data.jpy||data.close);
       if(a&&/^\d{4}-\d\d-\d\d$/.test(d)&&Number.isFinite(px)&&px>0)latestQuotes.set(priceKey(a,d),{price:px,source:data.source||'価格CSV',timestamp:new Date().toISOString()});else invalid++;
-    }count++;
+    }
    }
   });
   if(mode==='rows'){rows=latestRows;currentPage=0;updateFilters();}else{for(const [k,v] of latestQuotes)quotes.set(k,v);}
@@ -54,6 +54,19 @@ async function readLargeCsv(file,mode){
 }
 function csvCell(v){let s=String(v??'');if(/^[=+@\-\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'}
 function makeCSV(arr,fields){return '\ufeff'+fields.join(',')+'\r\n'+arr.map(r=>fields.map(k=>csvCell(r[k])).join(',')).join('\r\n')+'\r\n'}
+async function exportLargeCSV(name,data,fields,transform=(row)=>row){
+ const chunks=['\ufeff'+fields.join(',')+'\r\n'];let lines=[];
+ for(let i=0;i<data.length;i++){
+  const obj=transform(data[i]);lines.push(fields.map(k=>csvCell(obj[k])).join(',')+'\r\n');
+  if(lines.length>=2000){chunks.push(lines.join(''));lines=[];if(i%10000<2000)await new Promise(resolve=>setTimeout(resolve,0));}
+ }
+ if(lines.length)chunks.push(lines.join(''));
+ const blob=new Blob(chunks,{type:'text/csv;charset=utf-8'}),link=document.createElement('a');
+ link.href=URL.createObjectURL(blob);link.download=name;document.body.append(link);link.click();
+ setTimeout(()=>{URL.revokeObjectURL(link.href);link.remove()},60000);
+ setStatus('評価CSVを出力しました：'+data.length+'行。');
+}
+
 function dl(name,body){const blob=new Blob([body],{type:'text/csv;charset=utf-8'}),link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=name;document.body.append(link);link.click();setTimeout(()=>{URL.revokeObjectURL(link.href);link.remove()},400)}
 function UTCday(datetime){const m=String(datetime).match(/^(\d{4})[\/-](\d\d)[\/-](\d\d)\s+(\d\d):(\d\d)/);if(!m)return '';let d=new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00+09:00`);return Number.isFinite(d.getTime())?d.toISOString().slice(0,10):''}
 const normalizeAsset=a=>String(a||'').toUpperCase().trim().replace(/\s*\(ERC20\)/i,'');
@@ -74,8 +87,15 @@ $('prevPage').addEventListener('click',()=>{if(currentPage>0){currentPage--;rend
 $('nextPage').addEventListener('click',()=>{currentPage++;render()});
 ['filter','coinFilter','stateFilter'].forEach(x=>$(x).addEventListener('input',render));
 $('fetchPrices').addEventListener('click',async()=>{if(!rows.length){setStatus('先に取引CSVを読み込んでください');return}const symbols=[...new Set(rows.map(r=>r.asset))].filter(a=>!['IZKY','AKC'].includes(a));if(symbols.length>MAX_SYMBOLS){setStatus('価格APIの負荷を抑えるため100通貨まで一括照会できます。手動価格CSVなら制限はありません。');return}const last=Math.max(...rows.map(r=>new Date(UTCday(r.datetime_jst)+'T00:00:00Z').getTime()).filter(Number.isFinite));let finish=Math.floor(last/1000)+86400,success=0,fail=[];const btn=$('fetchPrices');btn.disabled=true;for(let i=0;i<symbols.length;i++){const a=symbols[i];setStatus(`公開価格APIに照会中 ${i+1}/${symbols.length}：${a}（取得できた行だけ評価）`);try{const url=`https://min-api.cryptocompare.com/data/v2/histoday?fsym=${encodeURIComponent(a)}&tsym=JPY&limit=950&toTs=${finish}&extraParams=EVIDENCE_TRACER_VALUATION`;const res=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(data.Response==='Error')throw Error(data.Message||'API error');const bars=data.Data?.Data;if(!Array.isArray(bars)||!bars.length)throw Error('日足データなし');let ct=0;for(const bar of bars){if(Number(bar.close)>0&&Number.isFinite(bar.time)){const d=new Date(bar.time*1000).toISOString().slice(0,10);quotes.set(priceKey(a,d),{price:Number(bar.close),source:'CryptoCompare histoday JPY UTC daily close',timestamp:new Date().toISOString()});ct++}}if(ct)success++;else fail.push(a+':有効価格なし')}catch(e){fail.push(a+':'+String(e.message||e))}render()}btn.disabled=false;setStatus(`価格API：${success}/${symbols.length}通貨に価格データ取得。${fail.length?'要確認 '+fail.join(' / '):'処理完了'}。AKC・IZKYは個別調査・手動単価が必要です。`)});
-$('export').addEventListener('click',()=>{if(!rows.length)return;const out=rows.map(r=>{const p=getPrice(r);return {id:r.id,datetime_jst:r.datetime_jst,price_date_utc:UTCday(r.datetime_jst),asset:r.asset,amount:r.original_amount,include_in_valuation:r.included?'yes':'no',price_jpy:p?.price??'',estimated_value_jpy:p?(r.amount*p.price).toFixed(2):'',price_source:p?.source||'',price_checked_at_utc:p?.timestamp||'',txid:r.txid,address:r.address,category:r.category,notes:r.notes,original_source:r.source}});dl('crypto_deposit_jpy_valuation.csv',makeCSV(out,Object.keys(out[0])))});
-$('exportPrice').addEventListener('click',()=>{if(!quotes.size)return setStatus('価格データがありません');const out=[...quotes].map(([key,v])=>({date_utc:key.split('|')[1],asset:key.split('|')[0],price_jpy:v.price,source:v.source,checked_at_utc:v.timestamp||''}));dl('historical_price_evidence.csv',makeCSV(out,Object.keys(out[0])))});
+$('export').addEventListener('click',async()=>{if(!rows.length)return;
+ const fields=['id','datetime_jst','price_date_utc','asset','amount','include_in_valuation','price_jpy','estimated_value_jpy','price_source','price_checked_at_utc','txid','address','category','notes','original_source'];
+ const btn=$('export');btn.disabled=true;
+ try{await exportLargeCSV('crypto_deposit_jpy_valuation.csv',rows,fields,r=>{const p=getPrice(r);return {id:r.id,datetime_jst:r.datetime_jst,price_date_utc:UTCday(r.datetime_jst),asset:r.asset,amount:r.original_amount,include_in_valuation:r.included?'yes':'no',price_jpy:p?.price??'',estimated_value_jpy:p?(r.amount*p.price).toFixed(2):'',price_source:p?.source||'',price_checked_at_utc:p?.timestamp||'',txid:r.txid,address:r.address,category:r.category,notes:r.notes,original_source:r.source}});}finally{btn.disabled=false;}
+});
+$('exportPrice').addEventListener('click',async()=>{if(!quotes.size)return setStatus('価格データがありません');
+ const btn=$('exportPrice');btn.disabled=true;
+ try{await exportLargeCSV('historical_price_evidence.csv',[...quotes],['date_utc','asset','price_jpy','source','checked_at_utc'],([key,v])=>({date_utc:key.split('|')[1],asset:key.split('|')[0],price_jpy:v.price,source:v.source,checked_at_utc:v.timestamp||''}));}finally{btn.disabled=false;}
+});
 $('template').addEventListener('click',()=>dl('transaction_template.csv',makeCSV([{datetime_jst:'2024/01/05 12:00',asset:'BTC',amount:'0.01',txid:'',address:'',category:'onchain_reported',notes:'例：これはサンプルです'}],['datetime_jst','asset','amount','txid','address','category','notes'])));
 $('clear').addEventListener('click',()=>{if(!confirm('画面上の取引と価格の一時データを消去しますか？'))return;rows=[];quotes.clear();updateFilters();render();setStatus('初期化しました。取引CSVを読み込んでください。')});
 render();
