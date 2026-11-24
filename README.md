@@ -30,12 +30,14 @@ The app separates blockchain facts from address attribution. `IZAKAYA_DEPOSIT` m
 
 Open the standalone [`valuation.html`](./valuation.html) page for an **open-source, local-first crypto-to-JPY historical valuation tool**. It accepts a user-supplied transaction CSV, fetches available historical UTC daily-close JPY quotes from an external market-data provider, accepts independently sourced price CSV files, and exports a per-row valuation CSV with price provenance. **No personal transactions, recipient addresses, or case records are bundled with the public app.**
 
+- **Large CSV support:** chunked browser-side reading (512 KiB slices), up to 500 MiB per CSV and 1,000,000 rows (whichever limit is reached first); table view shows 100 rows at a time and CSV exports are constructed in batches. Actual performance is device-memory dependent; extremely large CSV files may still require splitting.
 - Sample input: [`examples/valuation-transactions.example.csv`](./examples/valuation-transactions.example.csv) (fictional example only)
 - Required input columns: `datetime_jst,asset,amount`; optional columns: `txid,address,category,notes,id`.
 - Historical-price input columns: `date_utc,asset,price_jpy,source`.
 - Data is processed in the browser, without uploading CSV files to this repository or a project backend. **External quote API calls disclose symbols and requested dates to the quote provider**, and website hosting may record ordinary access logs.
 - Prices are **UTC daily closes**, not the exact price at the deposit second. Missing/unsupported historical prices remain empty. Classifications such as refund, service credit, zero amount, or suspected duplicates must be reviewed manually.
 - **A valuation is not evidence of acquisition cost, returned principal, or final legal damages.** Keep bank transaction records, exchange receipts, chain TxIDs, original CSV/PDF files, and quote-source evidence separately.
+- The valuation page uses a restrictive Content Security Policy and displays CSV text using safe text-only DOM APIs. No CSV files are uploaded to an application server. API lookups are still subject to provider rate limits.
 - The tool is part of this repository and is distributed under the [MIT License](./LICENSE).
 
 For GitHub Pages deployments using the repository root as the publishing source, the direct path is `/valuation.html`. If Pages is not enabled, users can download the repository and open the standalone HTML file locally.
