@@ -1,0 +1,65 @@
+/* Evidence Tracer homepage — dark navy / mint visual parity with valuation and history tools.
+   Deliberately scoped to index.html; police report print styling remains unchanged. */
+:root {
+  color-scheme: dark;
+  font-family: Inter,system-ui,-apple-system,"Noto Sans JP",sans-serif;
+  color:#f3f7ff;
+  background:#0b111a;
+  --et-bg:#0b111a;--et-panel:#152132;--et-panel-alt:#1a2a3c;
+  --et-ink:#f3f7ff;--et-muted:#a9bdd0;--et-border:#354b62;
+  --et-mint:#80e9da;--et-gold:#f3c37b;
+}
+body{background:radial-gradient(circle at 92% -12%,#173d4b 0%,transparent 35%),var(--et-bg);color:var(--et-ink)}
+.hero{background:linear-gradient(125deg,#142638 0%,#111d2c 62%,#12353b 100%);color:var(--et-ink);border:1px solid var(--et-border);box-shadow:0 14px 32px rgba(0,0,0,.12)}
+.hero h1{color:var(--et-ink)}
+.hero .badge{background:#18484c;color:#9ef9e7;border:1px solid #377d7d;letter-spacing:.035em}
+.hero nav a{background:#20364a!important;color:#e0edf7!important;border:1px solid #405d73!important;border-radius:10px!important;text-decoration:none!important;transition:background .15s,border-color .15s}
+.hero nav a:hover,.hero nav a:focus-visible{background:#24545b!important;border-color:var(--et-mint)!important;color:#f6fffc!important}
+.hero nav a[aria-current="page"]{background:#1b5354!important;color:#adffef!important;border-color:#67cabb!important}
+.card{background:var(--et-panel);color:var(--et-ink);border:1px solid var(--et-border);box-shadow:0 4px 20px rgba(0,0,0,.08)}
+.card h2,.card h3,.explain strong{color:var(--et-ink)}
+.muted,.explain,.explain p,.section-intro,.report-meta dt,.evidence-grid dt,.meta-grid dt,.police-print-meta{color:var(--et-muted)}
+label{color:#c2d1e1}
+input,select,textarea,#localTargets,#policeKit textarea{background:#0d1826;color:var(--et-ink);border:1px solid #49617a}
+input::placeholder,textarea::placeholder{color:#8da3b9}
+input:disabled,select:disabled,textarea:disabled,button:disabled{opacity:.55}
+input:focus-visible,textarea:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--et-mint);outline-offset:3px}
+button{background:#23384d;color:var(--et-ink);border:1px solid #49657d}
+button:hover{background:#2a4b61;color:#fff;border-color:var(--et-mint)}
+button.primary,.primary{background:var(--et-mint);border-color:var(--et-mint);color:#082b2b}
+button.primary:hover{background:#b0f8ec;color:#06252c;border-color:#b0f8ec}
+.privacy{border-left-color:#64d5c1}
+.warn{border-left-color:var(--et-gold)}
+.help-link,a{color:var(--et-mint)}
+.help-link:hover,a:hover{color:#b2fff0}
+.help-icon{border-color:#7e9ab2}
+.tooltip{background:#253950;color:#f3f7ff;border:1px solid #4e708c}
+.explain-secondary,.workflow,.operation-status{background:#1a2d3f;color:#d6e3ef;border:1px solid #39566e}
+.workflow strong{color:#e7f5ff}
+.workflow-steps span{background:#223a4c;border:1px solid #46677f;color:#e7f4ff}
+.results{background:#111e2d;border:1px solid var(--et-border)}
+table{color:var(--et-ink)}
+th{background:#23384b;color:#e2f1fc;border-bottom:1px solid #49647c}
+td{border-bottom:1px solid #334a5e;color:#e0eaf5}
+tbody tr:nth-child(even){background:#182b3c}
+tbody tr:hover{background:#234054}
+.pill{background:#284158;color:#d8e8f4}
+.status-confirmed,.pill[data-status="SELF_WALLET_CONFIRMED"]{background:#194c41;color:#a5fbe3}
+.status-unknown,.pill[data-status="SOURCE_UNKNOWN"]{background:#4a3c22;color:#ffdfa1}
+.pill[data-status="UNRESOLVED"],.pill[data-status="AMBIGUOUS_MATCH"]{background:#542c32;color:#ffc3c3}
+.recon-fact{color:#bdd0de;border-top-color:#466073}
+.recon-error,.danger{color:#ffaaa9}
+#reconDetails{border-top-color:#40586e}
+.meta-grid div,.evidence-grid div,.evidence-card{border-color:#435a70}
+#policeManifest button{background:#23384d;color:#eff8ff}
+#boot-error{border-color:#a85454;color:#ffbcbc}
+@media print{
+ :root{color-scheme:light;color:#101820;background:#fff}
+ body{background:#fff;color:#111}
+ .hero,.card,.results,.evidence-card,.meta-grid div,.evidence-grid div{background:#fff;color:#111;border-color:#ccc;box-shadow:none}
+ .card h2,.card h3,.explain strong,.explain,.explain p,.muted,.section-intro,.report-meta dt,.evidence-grid dt,.meta-grid dt{color:#111}
+ table,td,th{background:#fff!important;color:#111!important;border-color:#ddd}
+ tbody tr:nth-child(even),tbody tr:hover{background:#fff}
+ .pill{background:#eee;color:#111}
+ .hero nav{display:none}
+}
