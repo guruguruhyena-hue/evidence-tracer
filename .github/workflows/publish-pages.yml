@@ -15,6 +15,7 @@ on:
       - "valuation-police-ui.js"
       - "valuation-worker.js"
       - "scripts/valuation-test.mjs"
+      - "scripts/shared-cache-test.mjs"
       - "report.html"
       - "src/**"
       - "vendor/**"
@@ -51,6 +52,7 @@ jobs:
           node --check valuation-audit.js
           node --check valuation-police-ui.js
           node scripts/valuation-test.mjs
+          node scripts/shared-cache-test.mjs
       - name: Refresh public IZAKA-YA historical price cache
         run: |
           python3 -m py_compile scripts/build-shared-price-cache.py
