@@ -63,3 +63,18 @@ acc={value:0n,scale:0};
 for(const value of ['1.000000000000000001','0.000000000000000002'])quantity.addDecimalToAccumulator(acc,value);
 assert.equal(quantity.decimalAccumulatorString(acc),'1.000000000000000003');
 console.log('Per-asset exact-quantity aggregation tests passed');
+
+const provisionalEvents=[], provisionalSelf={postMessage:m=>provisionalEvents.push(m)};
+vm.runInNewContext(workerCode,{
+ self:provisionalSelf,TextDecoder,Blob,setTimeout,BigInt,Date,Number,Math,Uint8Array,String,Array,Object,RegExp,Error
+},{filename:'valuation-worker-review.js'});
+const example='datetime_jst,asset,amount,category\\n'+
+ '2024/12/26 23:02,USDC,10,review\\n'+
+ '2025/01/01 13:00,BTC,0.1,onchain_reported\\n'+
+ '2025/01/01 13:00,ETH,1,service_credit\\n'+
+ '2025/01/01 13:00,XRP,0,zero\\n';
+await provisionalSelf.onmessage({data:{type:'import',file:new Blob([example]),id:'rows'}});
+const rr=provisionalEvents.filter(m=>m.type==='batch').flatMap(m=>m.rows);
+assert.equal(rr.length,4);
+assert.deepEqual(Array.from(rr,r=>r.included),[true,true,false,false]);
+console.log('Provisional review and explicit exclusion defaults passed');
