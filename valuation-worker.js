@@ -42,7 +42,7 @@ self.onmessage=async event=>{
    for(const record of batch){
     if(header===null){
       header=record.map(s=>s.trim().toLowerCase());
-      if(!header.includes('asset')||(id==='rows'&&!header.includes('amount'))||(id==='prices'&&!header.some(k=>['price_jpy','jpy','close'].includes(k))))throw Error('Missing required CSV headers');
+      if(!header.includes('asset')||(id==='rows'&&!header.includes('amount'))||(id==='prices'&&!header.some(k=>['price_jpy','jpy','close'].includes(k)))||(id==='audit'&&!['amount','price_jpy','estimated_value_jpy','include_in_valuation'].every(k=>header.includes(k))))throw Error('Missing required CSV headers');
       continue;
     }
     if(++total>MAX_ROWS)throw Error('Limit 1,000,000 CSV records');
@@ -50,17 +50,18 @@ self.onmessage=async event=>{
     const r=Object.create(null);
     for(let i=0;i<header.length;i++)if(header[i])r[header[i]]=String(record[i]||'').trim();
     const a=normalizeAsset(r.asset);
-    if(id==='rows'){
+    if(id==='audit'){output.push(r);
+    }else if(id==='rows'){
       const date=r.datetime_jst||r.date_jst||r.date||'',amount=String(r.amount||'').replace(/,/g,'');
       if(!utcDay(date)||!a||!validDecimal(amount)){invalid++;continue;}
       output.push({id:r.id||'ROW-'+String(total).padStart(6,'0'),datetime_jst:date,asset:a,amount,original_amount:amount,
         txid:r.txid||'',address:r.address||'',category:r.category||'unclassified',notes:r.notes||'',source:r.source||'CSV',
         included:r.included?(/^(1|true|yes)$/i.test(r.included)):(r.category==='onchain_reported'||!r.category),
-        manualPrice:validDecimal(r.price_jpy)&&BigInt(String(r.price_jpy).split('.')[0]||'0')>=0n?r.price_jpy:null,manualSource:r.price_source||''});
+        manualPrice:validDecimal(r.price_jpy)&&BigInt(String(r.price_jpy).split('.')[0]||'0')>=0n?r.price_jpy:null,manualSource:r.price_source||'',manualSourceUrl:r.price_source_url||'',manualSourceSha256:r.price_source_sha256||'',manualEvidenceRef:r.price_evidence_ref||'',manualPriceMethod:r.price_method||''});
     }else{
       const day=r.date_utc||r.day_utc||r.date||'',px=r.price_jpy||r.jpy||r.close||'';
       if(!a||!/^\d{4}-\d\d-\d\d$/.test(day)||!validDecimal(px)||!/[1-9]/.test(px)){invalid++;continue;}
-      output.push({key:a+'|'+day,price:px,source:r.source||'輸入価格CSV'});
+      output.push({key:a+'|'+day,price:px,source:r.source||'輸入価格CSV',sourceUrl:r.source_url||r.price_source_url||'',sourceSha256:r.source_sha256||r.price_source_sha256||'',evidenceRef:r.evidence_ref||r.price_evidence_ref||'',method:r.method||r.price_method||'UTC_DAILY_CLOSE',checkedAt:r.checked_at_utc||''});
     }
     accepted++;
    }
