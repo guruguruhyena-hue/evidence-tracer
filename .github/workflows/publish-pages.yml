@@ -50,6 +50,10 @@ jobs:
     steps:
       - name: Checkout public code
         uses: actions/checkout@v4
+      - name: Install PDF.js dependency and vendor parser locally
+        run: |
+          npm install --no-audit --no-fund
+          npm run build:vendor
       - name: Check valuation JavaScript syntax
         run: |
           node --check valuation.js
@@ -58,6 +62,13 @@ jobs:
           node --check flow-reconcile.js
           node --check flow-reconcile-ui.js
           node --check guide.js
+          node --check app.js
+          node --check report.js
+          node --check tx-verify.js
+          node --check btc-verify.js
+          node scripts/reconciliation-test.mjs
+          node scripts/report-test.mjs
+          npm run privacy:test
           node scripts/flow-reconcile-test.mjs
           node scripts/history-converter-test.mjs
           node --check historical-price-sources.js
@@ -68,10 +79,12 @@ jobs:
           node scripts/valuation-test.mjs
           node scripts/shared-cache-test.mjs
       - name: Refresh public IZAKA-YA historical price cache
+        if: github.event_name != 'push'
         run: |
           python3 -m py_compile scripts/build-shared-price-cache.py
           python3 scripts/build-shared-price-cache.py || echo "::warning::Price refresh unavailable; deploy existing cache only"
       - name: Commit public price snapshots
+        if: github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
