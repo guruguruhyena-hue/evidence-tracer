@@ -12,7 +12,7 @@
   let d=10n**target,v=(n+d/2n)/d;const places=scale-Number(target);
   if(!places)return v.toString();
   let str=v.toString().padStart(places+1,'0');
-  return str.slice(0,-places)+'.'+str.slice(-places).replace(/0+$/,'').replace(/\.$/,'') || '0';
+  return (str.slice(0,-places)+'.'+str.slice(-places).replace(/0+$/,'')).replace(/\.$/,'') || '0';
  }
  async function json(url,timeout=14000){
   let response;
