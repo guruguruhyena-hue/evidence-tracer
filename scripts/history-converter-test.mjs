@@ -52,3 +52,15 @@ assert.equal(splitRecord.records[1].asset,'USDT');
 assert.equal(splitRecord.records[1].amount,'218.645344');
 assert.equal(splitRecord.records[1].source_page,'1','Original timestamp appears on prior page');
 console.log('Cross-page transaction parsing test passed.');
+
+
+const printed=p.parsePdfPages([
+ {page:1,text:'2026/09/02 11:54 履歴｜IZAKA-YA\n2025/08/03 06:51\nhttps://app.example.test/history?lang=ja#                                                                                       6/9\n'},
+ {page:2,text:'2026/09/02 11:54 履歴｜IZAKA-YA\n0.13152393 BTC の融資を開始しました\n2025/08/01 00:00\n103 USDC (ERC20) の融資が終了しました\n利益は 1.862454 USDC (ERC20) です\n'}
+],'print.pdf','sha-test');
+assert.equal(printed.records.length,2,'Printed page header must not cause a missing record');
+assert.equal(printed.records[0].amount,'0.13152393','PDF page number 6/9 must not alter BTC quantity');
+assert.equal(printed.records[0].source_page,'1','Timestamp on first page must be preserved');
+assert.equal(printed.records[1].asset,'USDC');
+assert.equal(printed.records[1].notes,'融資終了・記載利益 1.862454 USDC','ERC20 profit must be retained');
+console.log('Print footer and ERC20 profit regression tests passed.');
