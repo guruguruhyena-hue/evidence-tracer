@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths:
       - "index.html"
+      - "guide.html"
+      - "guide.js"
+      - "flow-reconcile.html"
+      - "flow-reconcile.js"
+      - "flow-reconcile-ui.js"
+      - "scripts/flow-reconcile-test.mjs"
       - "valuation.html"
       - "history-import.html"
       - "history-converter.js"
@@ -49,6 +55,10 @@ jobs:
           node --check valuation.js
           node --check history-converter.js
           node --check history-import-ui.js
+          node --check flow-reconcile.js
+          node --check flow-reconcile-ui.js
+          node --check guide.js
+          node scripts/flow-reconcile-test.mjs
           node scripts/history-converter-test.mjs
           node --check historical-price-sources.js
           node --check shared-price-db.js
@@ -74,7 +84,7 @@ jobs:
         run: |
           mkdir -p _site
           cp ./*.html _site/
-          cp valuation.js valuation-worker.js valuation-audit.js valuation-police-ui.js historical-price-sources.js shared-price-db.js history-converter.js history-import-ui.js _site/
+          cp valuation.js valuation-worker.js valuation-audit.js valuation-police-ui.js historical-price-sources.js shared-price-db.js history-converter.js history-import-ui.js flow-reconcile.js flow-reconcile-ui.js guide.js _site/
           test -d src && cp -R src _site/ || true
           test -d vendor && cp -R vendor _site/ || true
           test -f app.js && cp app.js _site/ || true
