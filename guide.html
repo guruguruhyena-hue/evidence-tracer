@@ -11,7 +11,7 @@
 <h1>取引履歴から入金の証拠を整理する<br>かんたん操作マニュアル</h1>
 <p class="lead">IZAKA-YAの利用者が、自分の取引履歴PDFをもとに、CSV変換・参考円評価・ウォレットの送金記録・入金照合まで進めるための<span style="color:var(--ink);font-weight:700">1ページ案内</span>です。専門知識がなくても、各ステップのリンクから操作できます。</p>
 <div class="nav"><a href="./index.html">ウォレット照合</a><a href="./history-import.html">PDF/CSV変換</a><a href="./flow-reconcile.html">統合資金照合</a><a href="./valuation.html">円時価評価</a><a href="./report.html">証拠資料</a><a href="https://github.com/guruguruhyena-hue/evidence-tracer">GitHub（公開コード）</a></div>
-<div class="row" style="display:flex;flex-wrap:wrap;align-items:center;gap:15px"><button class="print" type="button" onclick="window.print()">印刷・PDFとして保存</button><span style="color:var(--muted);font-size:12px">費用不要の公開ツール。秘密鍵・シードフレーズは絶対に入力しません。</span></div>
+<div class="row" style="display:flex;flex-wrap:wrap;align-items:center;gap:15px"><button class="print" type="button" id="printGuide">印刷・PDFとして保存</button><span style="color:var(--muted);font-size:12px">費用不要の公開ツール。秘密鍵・シードフレーズは絶対に入力しません。</span></div>
 </section>
 <div class="notice"><strong>はじめに：</strong>自分のウォレット公開アドレス、IZAKA-YAの各履歴PDF、取引所の出金明細、受取側の記録を準備してください。原本は変更せず保管してください。照合できなかった行を「送金なし」と断定しないでください。</div>
 <section class="flow" aria-label="操作の全体図">
@@ -47,4 +47,4 @@
 <label><input type="checkbox">円評価額を確定損害額と記載していない</label>
 </div></section>
 <p class="footer">Evidence Tracerは証拠整理の補助ツールです。PDF・CSVは原則としてブラウザ内で解析し、独自サーバーへアップロードしません。ウォレット照会時は公開ブロックチェーンAPIへ指定アドレス等が送信される場合があります。原本の真正性、サービスの運営主体、確定損害額、犯罪の成立は自動判定できません。<br>公開コード：<a href="https://github.com/guruguruhyena-hue/evidence-tracer">github.com/guruguruhyena-hue/evidence-tracer</a></p>
-</main></body></html>
+</main><script src="./guide.js" defer></script></body></html>
