@@ -7,6 +7,7 @@ on:
       - "index.html"
       - "valuation.html"
       - "valuation.js"
+      - "valuation-audit.js"
       - "valuation-worker.js"
       - "scripts/valuation-test.mjs"
       - "report.html"
@@ -38,12 +39,13 @@ jobs:
         run: |
           node --check valuation.js
           node --check valuation-worker.js
+          node --check valuation-audit.js
           node scripts/valuation-test.mjs
       - name: Prepare static site
         run: |
           mkdir -p _site
           cp ./*.html _site/
-          cp valuation.js valuation-worker.js _site/
+          cp valuation.js valuation-worker.js valuation-audit.js _site/
           test -d src && cp -R src _site/ || true
           test -d vendor && cp -R vendor _site/ || true
           test -f app.js && cp app.js _site/ || true
