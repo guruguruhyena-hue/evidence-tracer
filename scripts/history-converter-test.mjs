@@ -16,13 +16,13 @@ const pages=[{page:1,text:[
  '受信Walletアドレス : r3ukRC',
  '受信宛先タグ : 4121162714',
  'TxID : ABCD'
-].join('\\n')},{page:2,text:[
+].join('\n')},{page:2,text:[
  '2026/08/30 00:00',
  '4.02169864 SOLの融資が終了しました',
  '利益は 0.3305505 SOL です',
  '2026/07/31 01:21',
  '4.02169864 SOL の融資を開始しました'
-].join('\\n')}];
+].join('\n')}];
 const parsed=p.parsePdfPages(pages,'sample.pdf','sha256-test');
 assert.equal(parsed.records.length,4);
 assert.equal(parsed.records.filter(r=>r.type==='deposit').length,2);
