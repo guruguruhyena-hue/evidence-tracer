@@ -2,7 +2,7 @@
 /* CSV ingestion worker. No network or persistent storage. */
 const CHUNK_BYTES=512*1024,MAX_ROWS=1000000,MAX_FIELD_BYTES=2*1024*1024;
 const validDecimal=s=>/^(?:0|[0-9]+)(?:\.[0-9]+)?$/.test(String(s||'').trim())&&String(s).length<=96;
-const utcDay=dt=>{const m=String(dt).match(/^(\d{4})[\/-](\d{2})[\/-](\d{2})\s+(\d{2}):(\d{2})/);if(!m)return '';const d=new Date(m[1]+'-'+m[2]+'-'+m[3]+'T'+m[4]+':'+m[5]+':00+09:00');return Number.isFinite(d.getTime())&&d.toISOString().startsWith(m[1])?d.toISOString().slice(0,10):'';};
+const utcDay=dt=>{const m=String(dt).match(/^(\d{4})[\/-](\d{2})[\/-](\d{2})\s+(\d{2}):(\d{2})/);if(!m)return '';const d=new Date(m[1]+'-'+m[2]+'-'+m[3]+'T'+m[4]+':'+m[5]+':00+09:00');return Number.isFinite(d.getTime())?d.toISOString().slice(0,10):'';};
 const normalizeAsset=s=>String(s||'').trim().toUpperCase().replace(/\s*\(ERC20\)/i,'');
 async function parseFile(file,emit){
  const decoder=new TextDecoder('utf-8',{fatal:true});let fields=[],cell='',quoted=false,quotePending=false,pendingCR=false,first=true,items=[],total=0;
