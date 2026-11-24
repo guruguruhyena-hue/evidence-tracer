@@ -1,8 +1,5 @@
 'use strict';
 const MAX_CSV_BYTES=500*1024*1024,CHUNK_BYTES=512*1024,MAX_SYMBOLS=100,MAX_RECORDS=1000000;const PAGE_SIZE=100;let rows=[],quotes=new Map(),status='',currentPage=0,loadBusy=false;const $=id=>document.getElementById(id);const nfmt=(v,max=8)=>new Intl.NumberFormat('ja-JP',{maximumFractionDigits:max}).format(v);const currency=(v)=>new Intl.NumberFormat('ja-JP',{style:'currency',currency:'JPY',maximumFractionDigits:0}).format(v);
-function csvParse(s){const out=[];let cell='',row=[],quoted=false;for(let i=0;i<s.length;i++){let c=s[i];if(quoted){if(c==='"'&&s[i+1]==='"'){cell+='"';i++}else if(c==='"')quoted=false;else cell+=c}else if(c==='"')quoted=true;else if(c===','){row.push(cell);cell=''}else if(c==='\n'||c==='\r'){if(c==='\r'&&s[i+1]==='\n')i++;row.push(cell);if(row.some(x=>x!==''))out.push(row);row=[];cell=''}else cell+=c}row.push(cell);if(row.some(x=>x!==''))out.push(row);return out}
-function readCsv(s){let arr=csvParse(s.replace(/^\ufeff/,''));if(!arr.length)return [];let head=arr.shift().map(x=>x.trim().toLowerCase());return arr.map(v=>Object.fromEntries(head.map((k,i)=>[k,(v[i]||'').trim()]))) }
-// Streaming CSV parser: UTF-8 chunks, embedded newlines and escaped double quotes.
 // One worker per import. Parsed batches remain in browser memory only.
 async function readLargeCsv(file,mode){
  if(loadBusy)return setStatus('別のCSVを処理中です');
@@ -67,12 +64,31 @@ function jpyCents(v){const abs=v<0n?-v:v;return(v<0n?'-':'')+(abs/100n).toLocale
 function positiveDecimal(v){try{return decimalParts(v).value>0n}catch{return false}}
 const priceKey=(a,d)=>`${normalizeAsset(a)}|${d}`;
 function selectedDefault(r){return r.category==='onchain_reported' || !r.category}
-function importRows(items){let errors=[];const cleaned=items.map((r,i)=>{const date=r.datetime_jst||r.date_jst||r.date||'',amt=Number(String(r.amount||'').replaceAll(',',''));if(!UTCday(date)||!r.asset||!Number.isFinite(amt)||amt<0){errors.push(i+2);return null};return {id:r.id||`ROW-${String(i+1).padStart(3,'0')}`,datetime_jst:date,asset:normalizeAsset(r.asset),amount:amt,original_amount:r.amount,txid:r.txid||'',address:r.address||'',category:r.category||'unclassified',notes:r.notes||'',source:r.source||'CSV',included:r.included?(/^(1|true|yes)$/i.test(r.included)):selectedDefault(r),manualPrice:r.price_jpy?Number(r.price_jpy):null,manualSource:r.price_source||''}}).filter(Boolean);rows=cleaned;updateFilters();render();setStatus(`${rows.length}行を読み込みました。${errors.length?'不正な行：'+errors.slice(0,12).join(','):''}`)}
-function importPrices(items){let added=0,bad=0;items.forEach(r=>{const a=normalizeAsset(r.asset),d=r.date_utc||r.day_utc||r.date,px=Number(r.price_jpy||r.jpy||r.close);if(a&&/^\d{4}-\d\d-\d\d$/.test(d)&&px>0&&Number.isFinite(px)){quotes.set(priceKey(a,d),{price:px,source:r.source||'輸入価格CSV',timestamp:new Date().toISOString()});added++}else bad++});render();setStatus(`価格 ${added}件を読込み（無効 ${bad}件）。取引にはマッチするUTC日付の価格を適用。`)}
 const getPrice=r=>{if(positiveDecimal(r.manualPrice))return {price:r.manualPrice,source:r.manualSource||'手動入力',date:UTCday(r.datetime_jst)};const d=UTCday(r.datetime_jst),v=quotes.get(priceKey(r.asset,d));return v?{...v,date:d}:null};
 function setStatus(msg){$('progress').textContent=msg}
 function updateFilters(){const c=$('coinFilter'),old=c.value;c.textContent='';let opt=document.createElement('option');opt.value='';opt.textContent='すべて';c.append(opt);[...new Set(rows.map(r=>r.asset))].sort().forEach(a=>{let o=document.createElement('option');o.value=o.textContent=a;c.append(o)});c.value=old}
-function render(){let applicable=rows.filter(r=>r.included&&positiveDecimal(r.original_amount)),priced=applicable.filter(r=>getPrice(r));$('totalRows').textContent=nfmt(rows.length);$('includedRows').textContent=nfmt(applicable.length);$('pricedRows').textContent=`${priced.length} / ${applicable.length}`;let total=0n;for(const r of priced)total+=centsOf(r.original_amount,getPrice(r).price);$('totalYen').textContent=priced.length?jpyCents(total):'未計算';$('totalContext').textContent=priced.length===applicable.length&&priced.length?'選択対象の全件に単価あり（参考評価額）':'価格のない評価対象は含まない部分計（損害額ではない）';
+let summaryGeneration=0;
+function scheduleSummary(){
+ const generation=++summaryGeneration;
+ let pos=0,included=0,priced=0,total=0n;
+ $('totalRows').textContent=nfmt(rows.length);
+ $('totalYen').textContent='集計中…';
+ function step(){
+  if(generation!==summaryGeneration)return;
+  const stop=Math.min(pos+4000,rows.length);
+  for(;pos<stop;pos++){
+   const r=rows[pos];if(!r.included||!positiveDecimal(r.original_amount))continue;
+   included++;const p=getPrice(r);if(p){priced++;total+=centsOf(r.original_amount,p.price);}
+  }
+  if(pos<rows.length){setTimeout(step,0);return;}
+  $('includedRows').textContent=nfmt(included);
+  $('pricedRows').textContent=priced+' / '+included;
+  $('totalYen').textContent=priced?jpyCents(total):'未計算';
+  $('totalContext').textContent=priced===included&&priced?'選択対象の全件に単価あり（各行0.01円単位で四捨五入）':'価格のない評価対象は含まない部分計（損害額ではない）';
+ }
+ step();
+}
+function render(){scheduleSummary();
 const term=$('filter').value.toLowerCase(),asset=$('coinFilter').value,st=$('stateFilter').value;let view=rows.filter(r=>(!asset||r.asset===asset)&&(!term||[r.id,r.asset,r.datetime_jst,r.txid,r.notes,r.address].join(' ').toLowerCase().includes(term))&&(!st||(st==='priced'&&!!getPrice(r))||(st==='unpriced'&&!getPrice(r))||(st==='included'&&r.included)||(st==='excluded'&&!r.included)));
 const pageCount=Math.max(1,Math.ceil(view.length/PAGE_SIZE));currentPage=Math.min(currentPage,pageCount-1);const start=currentPage*PAGE_SIZE;const visible=view.slice(start,start+PAGE_SIZE);const tbody=$('tbody');tbody.textContent='';const fragment=document.createDocumentFragment();visible.forEach(r=>{const tr=document.createElement('tr');if(!r.included)tr.className='dim';function td(s,className){const x=document.createElement('td');x.textContent=s;if(className)x.className=className;tr.append(x);return x}
 const t=document.createElement('td');let chk=document.createElement('input');chk.type='checkbox';chk.checked=r.included;chk.className='inlinecheck';chk.title='この行を評価対象に含める';chk.addEventListener('change',()=>{r.included=chk.checked;render()});t.append(chk);tr.append(t);td(r.datetime_jst);td(r.asset);td(r.original_amount,'amount');const ti=document.createElement('td'),pi=document.createElement('input');pi.className='editprice';pi.type='number';pi.step='any';pi.min='0';pi.placeholder=getPrice(r)?String(getPrice(r).price):'未取得';pi.value=positiveDecimal(r.manualPrice)?String(r.manualPrice):'';pi.title=getPrice(r)?.source||'価格未取得';pi.addEventListener('change',()=>{r.manualPrice=positiveDecimal(pi.value)?pi.value:null;render()});ti.append(pi);if(getPrice(r)){const div=document.createElement('div');div.className='hint';div.textContent=(positiveDecimal(r.manualPrice)?'手動':'API/価格表')+' · '+UTCday(r.datetime_jst);ti.append(div)}tr.append(ti);const p=getPrice(r);td(p?jpyCents(centsOf(r.original_amount,p.price)):'—',p?'value':'muted');const catText={onchain_reported:'TxID記載',review:'要確認',service_credit:'サービス内入金',zero:'数量0',unclassified:'未分類'};let state=td(catText[r.category]||r.category);state.title=r.notes;let meta=td((r.txid&&r.txid!=='-'?r.txid.slice(0,14)+'…':'TxID記載なし')+(r.notes?' · '+r.notes:''));meta.title=[r.txid,r.address,r.notes].filter(Boolean).join('\n');fragment.append(tr)});tbody.append(fragment);$('shown').textContent=`表示 ${view.length?start+1:0}〜${Math.min(view.length,start+PAGE_SIZE)} / 条件一致${view.length}件（全${rows.length}件）。ページ ${currentPage+1}/${pageCount}`;$('prevPage').disabled=currentPage===0;$('nextPage').disabled=currentPage>=pageCount-1}
