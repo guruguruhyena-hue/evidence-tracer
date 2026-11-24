@@ -131,6 +131,10 @@ def save_asset(asset, rows):
         output = buf.getvalue()
         if not dest.exists() or dest.read_text(encoding="utf-8") != output:
             dest.write_text(output, encoding="utf-8")
+        json_dest = path / (year + ".json")
+        json_content = json.dumps({"schema_version": 1, "asset": asset, "year": int(year), "rows": items}, ensure_ascii=False, separators=(",", ":")) + "\n"
+        if not json_dest.exists() or json_dest.read_text(encoding="utf-8") != json_content:
+            json_dest.write_text(json_content, encoding="utf-8")
 
 
 def main():
@@ -167,6 +171,9 @@ def main():
                         continue
                     fx, fx_day = lookup[day]
                     url = sources[0] if sources else ""
+                    previous = rows.get(day.isoformat())
+                    if previous and previous.get("price_jpy") == decimal_price(close, fx) and previous.get("method") == "USDT_PAIR_DAILY_CLOSE_X_USDJPY_REFERENCE":
+                        continue
                     rows[day.isoformat()] = {
                         "date_utc": day.isoformat(), "asset": asset,
                         "price_jpy": decimal_price(close, fx),
@@ -178,6 +185,9 @@ def main():
                     }
             else:
                 for day, (fx, fx_day) in lookup.items():
+                    previous = rows.get(day.isoformat())
+                    if previous and previous.get("price_jpy") == decimal_price(Decimal("1"), fx) and previous.get("method") == "USDT_USD_PARITY_ASSUMPTION_X_USDJPY_REFERENCE":
+                        continue
                     rows[day.isoformat()] = {
                         "date_utc": day.isoformat(), "asset": asset,
                         "price_jpy": decimal_price(Decimal("1"), fx),
