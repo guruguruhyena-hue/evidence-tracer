@@ -109,7 +109,7 @@
   "end_utc": "2026-11-23",
   "fx_provider": "Frankfurter v1 USD/JPY historical reference",
   "fx_source_url": "https://api.frankfurter.dev/v1/2023-11-21..2026-11-23?base=USD&symbols=JPY",
-  "generated_at_utc": "2026-11-24T09:00:01.842014+00:00",
+  "generated_at_utc": "2026-11-24T14:04:02.531528+00:00",
   "method_warning": "Reference only: ASSET/USDT UTC closing price * USD/JPY reference. Treating USDT as USD is an assumption, not a market-observed crypto/JPY or exact-time exchange rate.",
   "schema_version": 1,
   "start_utc": "2023-12-01",
