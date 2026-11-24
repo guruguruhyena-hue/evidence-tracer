@@ -25,6 +25,21 @@ External blockchain/RPC providers can observe queries made to them. For stronger
 ## Evidence model
 The app separates blockchain facts from address attribution. `IZAKAYA_DEPOSIT` means a deposit address backed by the case-profile evidence. `RELATED_WALLET` is never presented as a customer deposit address.
 
+
+## Historical JPY Valuation / 入金時点の円時価評価
+
+Open the standalone [`valuation.html`](./valuation.html) page for an **open-source, local-first crypto-to-JPY historical valuation tool**. It accepts a user-supplied transaction CSV, fetches available historical UTC daily-close JPY quotes from an external market-data provider, accepts independently sourced price CSV files, and exports a per-row valuation CSV with price provenance. **No personal transactions, recipient addresses, or case records are bundled with the public app.**
+
+- Sample input: [`examples/valuation-transactions.example.csv`](./examples/valuation-transactions.example.csv) (fictional example only)
+- Required input columns: `datetime_jst,asset,amount`; optional columns: `txid,address,category,notes,id`.
+- Historical-price input columns: `date_utc,asset,price_jpy,source`.
+- Data is processed in the browser, without uploading CSV files to this repository or a project backend. **External quote API calls disclose symbols and requested dates to the quote provider**, and website hosting may record ordinary access logs.
+- Prices are **UTC daily closes**, not the exact price at the deposit second. Missing/unsupported historical prices remain empty. Classifications such as refund, service credit, zero amount, or suspected duplicates must be reviewed manually.
+- **A valuation is not evidence of acquisition cost, returned principal, or final legal damages.** Keep bank transaction records, exchange receipts, chain TxIDs, original CSV/PDF files, and quote-source evidence separately.
+- The tool is part of this repository and is distributed under the [MIT License](./LICENSE).
+
+For GitHub Pages deployments using the repository root as the publishing source, the direct path is `/valuation.html`. If Pages is not enabled, users can download the repository and open the standalone HTML file locally.
+
 ## Local use
 No build step is required. Serve the repository as static files:
 
