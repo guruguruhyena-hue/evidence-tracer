@@ -3,8 +3,8 @@
     "BTC": {
       "error": "",
       "first_date_utc": "2023-12-01",
-      "last_date_utc": "2026-11-23",
-      "rows": 1089,
+      "last_date_utc": "2026-11-24",
+      "rows": 1090,
       "status": "ok",
       "years": [
         "2023",
@@ -16,8 +16,8 @@
     "ETH": {
       "error": "",
       "first_date_utc": "2023-12-01",
-      "last_date_utc": "2026-11-23",
-      "rows": 1089,
+      "last_date_utc": "2026-11-24",
+      "rows": 1090,
       "status": "ok",
       "years": [
         "2023",
@@ -29,8 +29,8 @@
     "OP": {
       "error": "",
       "first_date_utc": "2023-12-01",
-      "last_date_utc": "2026-11-23",
-      "rows": 1089,
+      "last_date_utc": "2026-11-24",
+      "rows": 1090,
       "status": "ok",
       "years": [
         "2023",
@@ -42,8 +42,8 @@
     "SHIB": {
       "error": "",
       "first_date_utc": "2023-12-01",
-      "last_date_utc": "2026-11-23",
-      "rows": 1089,
+      "last_date_utc": "2026-11-24",
+      "rows": 1090,
       "status": "ok",
       "years": [
         "2023",
@@ -55,8 +55,8 @@
     "SOL": {
       "error": "",
       "first_date_utc": "2023-12-01",
-      "last_date_utc": "2026-11-23",
-      "rows": 1089,
+      "last_date_utc": "2026-11-24",
+      "rows": 1090,
       "status": "ok",
       "years": [
         "2023",
@@ -68,8 +68,8 @@
     "USDC": {
       "error": "",
       "first_date_utc": "2023-12-01",
-      "last_date_utc": "2026-11-23",
-      "rows": 1089,
+      "last_date_utc": "2026-11-24",
+      "rows": 1090,
       "status": "ok",
       "years": [
         "2023",
@@ -81,8 +81,8 @@
     "USDT": {
       "error": "",
       "first_date_utc": "2023-12-01",
-      "last_date_utc": "2026-11-23",
-      "rows": 1089,
+      "last_date_utc": "2026-11-24",
+      "rows": 1090,
       "status": "ok",
       "years": [
         "2023",
@@ -94,8 +94,8 @@
     "XRP": {
       "error": "",
       "first_date_utc": "2023-12-01",
-      "last_date_utc": "2026-11-23",
-      "rows": 1089,
+      "last_date_utc": "2026-11-24",
+      "rows": 1090,
       "status": "ok",
       "years": [
         "2023",
@@ -106,10 +106,10 @@
     }
   },
   "currency": "JPY",
-  "end_utc": "2026-11-23",
+  "end_utc": "2026-11-24",
   "fx_provider": "Frankfurter v1 USD/JPY historical reference",
-  "fx_source_url": "https://api.frankfurter.dev/v1/2023-11-21..2026-11-23?base=USD&symbols=JPY",
-  "generated_at_utc": "2026-11-24T14:18:04.427821+00:00",
+  "fx_source_url": "https://api.frankfurter.dev/v1/2023-11-21..2026-11-24?base=USD&symbols=JPY",
+  "generated_at_utc": "2026-11-25T13:13:39.341509+00:00",
   "method_warning": "Reference only: ASSET/USDT UTC closing price * USD/JPY reference. Treating USDT as USD is an assumption, not a market-observed crypto/JPY or exact-time exchange rate.",
   "schema_version": 1,
   "start_utc": "2023-12-01",
